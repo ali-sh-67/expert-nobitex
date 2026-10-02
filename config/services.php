@@ -34,5 +34,10 @@ return [
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
     ],
+    'nobitex' => [
+        'base_url' => env('NOBITEX_BASE_URL', 'https://api.nobitex.ir'),
+        'API_KEY' => env('NOBITEX_API_KEY'),
+        'SECRET_KEY' => env('NOBITEX_SECRET_KEY'),
+    ],
 
 ];
