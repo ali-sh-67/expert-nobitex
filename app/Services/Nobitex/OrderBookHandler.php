@@ -32,10 +32,11 @@ class OrderBookHandler
      */
     private array $asks = [];
 
-    private bool $valid = false {
-        get {
-            return $this->valid;
-        }
+    private bool $valid = false;
+
+    public function isValid(): bool
+    {
+        return $this->valid;
     }
 
     public function initialize(array $data): void
@@ -86,11 +87,11 @@ class OrderBookHandler
         $this->valid = true;
 
         if (isset($data['lastTradePrice'])) {
-            $this->lastTradePrice = (string) $data['lastTradePrice'];
+            $this->lastTradePrice = (string)$data['lastTradePrice'];
         }
 
         if (isset($data['lastUpdate'])) {
-            $this->lastUpdate = (int) $data['lastUpdate'];
+            $this->lastUpdate = (int)$data['lastUpdate'];
         }
     }
 
@@ -121,8 +122,8 @@ class OrderBookHandler
                 );
             }
 
-            $price = (string) $level[0];
-            $quantity = (string) $level[1];
+            $price = (string)$level[0];
+            $quantity = (string)$level[1];
 
             try {
                 $priceDecimal = BigDecimal::of($price);
