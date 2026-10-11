@@ -31,19 +31,25 @@ readonly class OrderBookMonitor
 
         dump("Ask levels: " . $this->orderBookHandler->getAskCount());
 
-        echo "Bid Depth (5): "
-            . $this->orderBookHandler->getBidDepth(5)
-            . PHP_EOL;
-
-        echo "Ask Depth (5): "
-            . $this->orderBookHandler->getAskDepth(5)
-            . PHP_EOL;
-
         dump("Last update: " . ($state->lastUpdate ?? 'N/A'));
 
         dump("Spread: " . ($metrics->spread ?? 'N/A'));
 
         dump("Spread %: " . ($metrics->spreadPercentage ?? 'N/A') . "%");
+
+
+        echo "Bid Depth (5): "
+            . ($state->bidDepth ?? 'N/A')
+            . PHP_EOL;
+
+        echo "Ask Depth (5): "
+            . ($state->askDepth ?? 'N/A')
+            . PHP_EOL;
+
+        echo "Order Book Imbalance: "
+            . ($metrics->imbalance ?? 'N/A')
+            . PHP_EOL;
+
 
         dump("Signal: {$signal->value}");
     }

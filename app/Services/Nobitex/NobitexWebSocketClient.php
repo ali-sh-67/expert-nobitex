@@ -14,7 +14,7 @@ class NobitexWebSocketClient
     private string $path = '/connection/websocket';
     private int $port = 443;
 
-    public function __construct(private OrderBookHandler $orderBookHandler)
+    public function __construct(private readonly OrderBookHandler $orderBookHandler)
     {
     }
 
