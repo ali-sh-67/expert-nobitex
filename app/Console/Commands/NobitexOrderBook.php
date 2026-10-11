@@ -2,37 +2,54 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Nobitex\NobitexHttpClient;
 use App\Services\Nobitex\NobitexWebSocketClient;
+use App\Services\Nobitex\OrderBookHandler;
+use App\Services\Nobitex\OrderBookMonitor;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+
+use Swoole\Coroutine;
+use function Swoole\Coroutine\run;
+use function Swoole\Coroutine\go;
 
 #[Signature('nobitex:orderbook')]
 #[Description('Listen to Nobitex BTCIRT orderbook')]
 class NobitexOrderBook extends Command
 {
-    /**
-     * Execute the console command.
-     */
     public function handle(
-        NobitexWebSocketClient $client
+        NobitexWebSocketClient $client,
+        OrderBookMonitor       $monitor,
+        NobitexHttpClient      $httpClient,
+        OrderBookHandler       $orderBookHandler,
     ): int
     {
-        \Co\run(function () use ($client) {
+        $orderBook = $httpClient->getOrderBook('BTCIRT');
+        $orderBookHandler->initialize($orderBook);
 
-            echo "Starting Nobitex WebSocket...\n";
+        dump('/************* depth *************/');
+        dump('getBidDepth: ' . $orderBookHandler->getBidDepth(5));
+        dump('getAskDepth: ' . $orderBookHandler->getAskDepth(5));
 
-            $client->connect();
+        run(function () use ($client, $monitor) {
 
-            echo "Connected.\n";
+            go(function () use ($client) {
+                $client->run(
+                    'public:orderbook-BTCIRT'
+                );
+            });
 
-            $client->subscribe('public:orderbook-BTCIRT');
+            go(function () use ($monitor) {
 
-            echo "Subscribed.\n";
+                while (true) {
+                    \Co::sleep(5);
 
-            echo "Listening...\n";
+                    $monitor->printState();
+                }
 
-            $client->listen();
+            });
+
         });
 
         return self::SUCCESS;
