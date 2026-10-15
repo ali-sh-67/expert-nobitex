@@ -3,13 +3,15 @@
 namespace App\Services\Nobitex;
 
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Http\Client;
 use Swoole\WebSocket\Frame;
+use Throwable;
 
 class NobitexWebSocketClient
 {
-    private Client $client;
+    private ?Client $client = null;
     private string $host = 'ws.nobitex.ir';
     private string $path = '/connection/websocket';
     private int $port = 443;
@@ -44,7 +46,7 @@ class NobitexWebSocketClient
 
                 echo "Connection lost.\n";
 
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
 
                 Log::error('Nobitex WebSocket error', [
                     'message' => $e->getMessage(),
@@ -52,6 +54,8 @@ class NobitexWebSocketClient
 
                 echo "Error: {$e->getMessage()}\n";
             }
+
+            $this->orderBookHandler->invalidateConnection();
 
             $this->close();
 
@@ -62,7 +66,7 @@ class NobitexWebSocketClient
                 2 ** min($attempt, 5)
             );
 
-            echo "Reconnecting in {$delay} seconds...\n";
+            echo "Reconnecting in $delay seconds...\n";
 
             Coroutine::sleep($delay);
         }
@@ -83,7 +87,7 @@ class NobitexWebSocketClient
         ]);
 
         if (!$this->client->upgrade($this->path)) {
-            throw new \RuntimeException(
+            throw new RuntimeException(
                 "WebSocket upgrade failed: {$this->client->errCode} - {$this->client->errMsg}"
             );
         }
@@ -95,7 +99,7 @@ class NobitexWebSocketClient
         $frame = $this->receive();
 
         if ($frame === null) {
-            throw new \RuntimeException('Connection response not received.');
+            throw new RuntimeException('Connection response not received.');
         }
 
         Log::info('Nobitex WebSocket connected', [
@@ -105,14 +109,50 @@ class NobitexWebSocketClient
 
     private function receive(): ?string
     {
+//        $frame = $this->client->recv(30);
+        $startedAt = microtime(true);
         $frame = $this->client->recv(30);
+        $elapsed = round(microtime(true) - $startedAt, 3);
 
         if ($frame === false) {
-            return null;
+            echo sprintf(
+                "[RECV FALSE] elapsed=%.3fs errCode=%s errMsg=%s connected=%s\n",
+                $elapsed,
+                $this->client->errCode,
+                $this->client->errMsg,
+                var_export($this->client->connected, true),
+            );
+        } elseif ($frame === '') {
+            echo sprintf(
+                "[RECV EMPTY] elapsed=%.3fs connected=%s\n",
+                $elapsed,
+                var_export($this->client->connected, true),
+            );
+        } elseif ($frame instanceof Frame) {
+            echo sprintf(
+                "[RECV FRAME] elapsed=%.3fs bytes=%d\n",
+                $elapsed,
+                strlen($frame->data),
+            );
         }
 
         if ($frame instanceof Frame) {
             return $frame->data;
+        }
+
+        // Swoole 6.1+: رشته خالی یعنی سرور اتصال را بسته است.
+        if ($frame === '') {
+            return null;
+        }
+
+        if ($frame === false) {
+            Log::warning('Nobitex WebSocket receive failed.', [
+                'error_code' => $this->client->errCode,
+                'error_message' => $this->client->errMsg,
+                'connected' => $this->client->connected,
+            ]);
+
+            return null;
         }
 
         if (is_string($frame)) {
@@ -134,7 +174,7 @@ class NobitexWebSocketClient
         );
 
         if (!$this->client->push($message)) {
-            throw new \RuntimeException(
+            throw new RuntimeException(
                 "WebSocket push failed: {$this->client->errCode} - {$this->client->errMsg}"
             );
         }
@@ -154,7 +194,7 @@ class NobitexWebSocketClient
         $frame = $this->receive();
 
         if ($frame === null) {
-            throw new \RuntimeException(
+            throw new RuntimeException(
                 'Subscribe response not received.'
             );
         }
@@ -217,7 +257,7 @@ class NobitexWebSocketClient
     private function handleHeartbeat(): void
     {
         if (!$this->client->push('{}')) {
-            throw new \RuntimeException(
+            throw new RuntimeException(
                 "Pong failed: {$this->client->errCode} - {$this->client->errMsg}"
             );
         }
@@ -227,6 +267,19 @@ class NobitexWebSocketClient
 
     public function close(): void
     {
-        $this->client->close();
+        if ($this->client === null) {
+            return;
+        }
+
+        $client = $this->client;
+        $this->client = null;
+
+        try {
+            $client->close();
+        } catch (Throwable $e) {
+            Log::warning('Error while closing Nobitex WebSocket', [
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 }

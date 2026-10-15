@@ -171,13 +171,17 @@ class OrderBookHandler
         }
     }
 
+
     private function invalidate(string $reason): void
     {
         $this->valid = false;
         $this->bids = [];
         $this->asks = [];
 
-        Log::warning('Invalid Nobitex order book; calculations disabled.', [
+        $this->lastTradePrice = null;
+        $this->lastUpdate = null;
+
+        Log::warning('Nobitex order book invalidated.', [
             'reason' => $reason,
         ]);
     }
@@ -257,5 +261,10 @@ class OrderBookHandler
     public function getAskCount(): int
     {
         return count($this->asks);
+    }
+
+    public function invalidateConnection(): void
+    {
+        $this->invalidate('WebSocket connection lost.');
     }
 }

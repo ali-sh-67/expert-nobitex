@@ -209,4 +209,90 @@ class OrderBookHandlerTest extends TestCase
             $strategy->evaluate($handler->snapshot())->value
         );
     }
+
+
+    #[Test]
+    public function it_invalidates_order_book_after_connection_loss(): void
+    {
+        $handler = new OrderBookHandler();
+
+        $handler->initialize([
+            'bids' => [
+                ['100', '2'],
+                ['99', '3'],
+            ],
+            'asks' => [
+                ['102', '4'],
+                ['103', '2'],
+            ],
+            'lastTradePrice' => '101',
+            'lastUpdate' => 123456789,
+        ]);
+
+        $this->assertTrue($handler->isValid());
+
+        $handler->invalidateConnection();
+
+        $this->assertFalse($handler->isValid());
+
+        $this->assertNull($handler->getBestBidPrice());
+        $this->assertNull($handler->getBestAskPrice());
+
+        $snapshot = $handler->snapshot();
+
+        $this->assertNull($snapshot->lastTradePrice);
+        $this->assertNull($snapshot->lastUpdate);
+
+        $this->assertNull($snapshot->bidDepth);
+        $this->assertNull($snapshot->askDepth);
+    }
+
+    #[Test]
+    public function it_recovers_when_a_valid_order_book_arrives_after_invalidation(): void
+    {
+        $handler = new OrderBookHandler();
+
+        $handler->initialize([
+            'bids' => [
+                ['100', '2'],
+                ['99', '3'],
+            ],
+            'asks' => [
+                ['102', '4'],
+                ['103', '2'],
+            ],
+            'lastTradePrice' => '101',
+            'lastUpdate' => 123456789,
+        ]);
+
+        $this->assertTrue($handler->isValid());
+        $this->assertSame('100', $handler->getBestBidPrice());
+
+        $handler->invalidateConnection();
+
+        $this->assertFalse($handler->isValid());
+        $this->assertNull($handler->getBestBidPrice());
+
+        $handler->handle([
+            'bids' => [
+                ['200', '5'],
+                ['199', '2'],
+            ],
+            'asks' => [
+                ['202', '3'],
+                ['203', '4'],
+            ],
+            'lastTradePrice' => '201',
+            'lastUpdate' => 987654321,
+        ]);
+
+        $this->assertTrue($handler->isValid());
+        $this->assertSame('200', $handler->getBestBidPrice());
+        $this->assertSame('202', $handler->getBestAskPrice());
+
+        $snapshot = $handler->snapshot();
+
+        $this->assertSame('201', $snapshot->lastTradePrice);
+        $this->assertSame(987654321, $snapshot->lastUpdate);
+    }
 }
