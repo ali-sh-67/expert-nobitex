@@ -46,6 +46,18 @@ class OrderBookHandler
 
     public function handle(array $data): void
     {
+          if (
+              isset($data['lastUpdate'], $this->lastUpdate) &&
+              (int) $data['lastUpdate'] < $this->lastUpdate
+           ) {
+              Log::warning('Ignoring stale order book update.', [
+            'incoming' => (int) $data['lastUpdate'],
+            'current' => $this->lastUpdate,
+        ]);
+    
+              return;
+            }
+      
         // هر پیام باید وضعیت کامل هر دو سمت را داشته باشد.
         if (
             !isset($data['bids'], $data['asks']) ||
@@ -128,6 +140,12 @@ class OrderBookHandler
             try {
                 $priceDecimal = BigDecimal::of($price);
                 $quantityDecimal = BigDecimal::of($quantity);
+
+              if (!$quantityDecimal->isGreaterThan(BigDecimal::zero())) {
+    throw new UnexpectedValueException(
+        "Quantity must be positive at level $index."
+    );
+}
             } catch (Throwable $e) {
                 throw new UnexpectedValueException(
                     "Non-numeric price or quantity at level $index.",

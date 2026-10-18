@@ -244,7 +244,12 @@ class NobitexWebSocketClient
 //            dump("----- WS ORDERBOOK ali-----");
 //
 //            dump($response);
-
+Log::debug('Nobitex orderbook update metadata', [
+    'lastUpdate' => $data['lastUpdate'] ?? null,
+    'lastUpdateType' => isset($data['lastUpdate'])
+        ? get_debug_type($data['lastUpdate'])
+        : 'missing',
+]);
             $this->orderBookHandler->handle($data);
 
             return;

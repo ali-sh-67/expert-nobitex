@@ -27,7 +27,7 @@ readonly class MarketMetrics
             if (!$bid->isZero()) {
                 $spreadPercentage = $spread->dividedBy($bid, 10, RoundingMode::HalfUp)->multipliedBy(100)->toScale(6, RoundingMode::HalfUp)->__toString();
             }
-            $spread = $spread->toScale(0, RoundingMode::HalfUp)->__toString();
+            $spread = $spread->__toString();
         }
 
         $imbalance = null;
