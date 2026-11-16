@@ -2,8 +2,10 @@
 
 namespace Tests\Unit;
 
+use App\Services\Nobitex\MarketContext;
 use App\Services\Nobitex\MarketMetrics;
 use App\Services\Nobitex\OrderBookHandler;
+use App\Services\Nobitex\Signal;
 use App\Services\Nobitex\SimpleStrategy;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -158,7 +160,7 @@ class OrderBookHandlerTest extends TestCase
         $metrics = MarketMetrics::fromSnapshot($snapshot);
 
         $this->assertSame('2', $metrics->spread);
-        $this->assertSame('2.000000', $metrics->spreadPercentage);
+        $this->assertSame('2.000000000000', $metrics->spreadPercentage);
         $this->assertSame('-0.090909', $metrics->imbalance);
     }
 
@@ -201,13 +203,19 @@ class OrderBookHandlerTest extends TestCase
                 ['102', '2'],
             ],
         ]);
+        $snapshot = $handler->snapshot();
 
         $strategy = new SimpleStrategy();
 
-        $this->assertSame(
-            'HOLD',
-            $strategy->evaluate($handler->snapshot())->value
+        $context = new MarketContext(
+            $snapshot,
+            MarketMetrics::fromSnapshot($snapshot),
         );
+
+        $result = $strategy->analyze($context);
+
+
+        $this->assertSame(Signal::HOLD, $result->signal);
     }
 
 
@@ -241,7 +249,7 @@ class OrderBookHandlerTest extends TestCase
         $snapshot = $handler->snapshot();
 
         $this->assertNull($snapshot->lastTradePrice);
-        $this->assertNull($snapshot->lastUpdate);
+        $this->assertSame(123456789, $snapshot->lastUpdate);
 
         $this->assertNull($snapshot->bidDepth);
         $this->assertNull($snapshot->askDepth);
@@ -295,4 +303,100 @@ class OrderBookHandlerTest extends TestCase
         $this->assertSame('201', $snapshot->lastTradePrice);
         $this->assertSame(987654321, $snapshot->lastUpdate);
     }
+
+    #[Test]
+    public function it_ignores_stale_order_book_updates(): void
+    {
+        $handler = new OrderBookHandler();
+
+        $handler->initialize([
+            'bids' => [['100', '2']],
+            'asks' => [['102', '3']],
+            'lastUpdate' => 200,
+        ]);
+
+        $handler->handle([
+            'bids' => [['90', '5']],
+            'asks' => [['95', '4']],
+            'lastUpdate' => 100,
+        ]);
+
+        $this->assertTrue($handler->isValid());
+        $this->assertSame('100', $handler->getBestBidPrice());
+        $this->assertSame('102', $handler->getBestAskPrice());
+    }
+
+
+    #[Test]
+    public function it_rejects_stale_update_after_connection_invalidation(): void
+    {
+        $handler = new OrderBookHandler();
+
+        $handler->initialize([
+            'bids' => [['100', '2']],
+            'asks' => [['102', '3']],
+            'lastUpdate' => 200,
+        ]);
+
+        $handler->invalidateConnection();
+
+        $handler->handle([
+            'bids' => [['90', '5']],
+            'asks' => [['95', '4']],
+            'lastUpdate' => 100,
+        ]);
+
+        $this->assertFalse($handler->isValid());
+        $this->assertNull($handler->getBestBidPrice());
+    }
+
+    #[Test]
+    public function it_considers_a_new_order_book_fresh(): void
+    {
+        $handler = new OrderBookHandler();
+
+        $handler->initialize([
+            'bids' => [['100', '2']],
+            'asks' => [['102', '3']],
+            'lastUpdate' => 200,
+        ]);
+
+        $this->assertTrue($handler->isFresh(1000));
+        $this->assertNotNull($handler->getDataAgeMs());
+    }
+
+    #[Test]
+    public function it_considers_an_expired_order_book_stale(): void
+    {
+        $handler = new OrderBookHandler();
+
+        $handler->initialize([
+            'bids' => [['100', '2']],
+            'asks' => [['102', '3']],
+            'lastUpdate' => 200,
+        ]);
+
+        usleep(20_000);
+
+        $this->assertFalse($handler->isFresh(1));
+    }
+
+    #[Test]
+    public function it_does_not_consider_invalid_order_book_fresh(): void
+    {
+        $handler = new OrderBookHandler();
+
+        $handler->initialize([
+            'bids' => [['100', '2']],
+            'asks' => [['102', '3']],
+            'lastUpdate' => 200,
+        ]);
+
+        $handler->invalidateConnection();
+
+        $this->assertFalse($handler->isFresh(1000));
+        $this->assertNull($handler->getDataAgeMs());
+    }
+
+
 }

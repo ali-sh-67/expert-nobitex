@@ -4,59 +4,84 @@ namespace App\Services\Nobitex;
 
 use Brick\Math\BigDecimal;
 
-class SimpleStrategy
+class SimpleStrategy implements StrategyInterface
 {
-    private const IMBALANCE_THRESHOLD = '0.20';
+    private const string IMBALANCE_THRESHOLD = '0.20';
+    private const string MAX_SPREAD_PERCENTAGE = '0.10';
 
-    private const MAX_SPREAD_PERCENTAGE = '0.10';
-
-    public function evaluate(OrderBookSnapshot $snapshot): Signal
+    public function key(): string
     {
+        return 'simple_orderbook';
+    }
+
+    public function analyze(MarketContext $context): StrategyResult
+    {
+        $metrics = $context->metrics;
+
         if (
-            $snapshot->bestBidPrice === null ||
-            $snapshot->bestAskPrice === null
+            $metrics === null ||
+            $metrics->spreadPercentage === null ||
+            $metrics->imbalance === null
         ) {
-            return Signal::HOLD;
+            return new StrategyResult(
+                Signal::HOLD,
+                0.0,
+                'market_metrics_unavailable',
+            );
         }
 
-        $metrics = MarketMetrics::fromSnapshot($snapshot);
+        $spread = BigDecimal::of((string) $metrics->spreadPercentage);
+        $imbalance = BigDecimal::of((string) $metrics->imbalance);
 
         if (
-            $metrics->imbalance === null ||
-            $metrics->spreadPercentage === null
-        ) {
-            return Signal::HOLD;
-        }
-
-        $imbalance = BigDecimal::of($metrics->imbalance);
-        $spreadPercentage = BigDecimal::of(
-            $metrics->spreadPercentage
-        );
-
-        if (
-            $spreadPercentage->compareTo(
+            $spread->isGreaterThan(
                 BigDecimal::of(self::MAX_SPREAD_PERCENTAGE)
-            ) > 0
+            )
         ) {
-            return Signal::HOLD;
+            return new StrategyResult(
+                Signal::HOLD,
+                0.0,
+                'spread_above_limit',
+                [
+                    'spread_percentage' => (string) $spread,
+                    'imbalance' => (string) $imbalance,
+                ],
+            );
         }
 
+        $confidence = min(1.0, abs((float) (string) $imbalance));
+
         if (
-            $imbalance->compareTo(
+            $imbalance->isGreaterThan(
                 BigDecimal::of(self::IMBALANCE_THRESHOLD)
-            ) >= 0
+            )
         ) {
-            return Signal::BUY;
+            return new StrategyResult(
+                Signal::BUY,
+                $confidence,
+                'buy_imbalance_threshold_reached',
+                ['imbalance' => (string) $imbalance],
+            );
         }
 
         if (
-            $imbalance->compareTo(
-                BigDecimal::of(self::IMBALANCE_THRESHOLD)->negated()
-            ) <= 0
+            $imbalance->isLessThan(
+                BigDecimal::of('-' . self::IMBALANCE_THRESHOLD)
+            )
         ) {
-            return Signal::SELL;
+            return new StrategyResult(
+                Signal::SELL,
+                $confidence,
+                'sell_imbalance_threshold_reached',
+                ['imbalance' => (string) $imbalance],
+            );
         }
 
-        return Signal::HOLD;
+        return new StrategyResult(
+            Signal::HOLD,
+            0.0,
+            'no_signal_threshold_reached',
+            ['imbalance' => (string) $imbalance],
+        );
     }
 }

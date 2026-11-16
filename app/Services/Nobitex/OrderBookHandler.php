@@ -34,6 +34,8 @@ class OrderBookHandler
 
     private bool $valid = false;
 
+    private ?int $lastReceivedAt = null;
+
     public function isValid(): bool
     {
         return $this->valid;
@@ -54,10 +56,10 @@ class OrderBookHandler
             'incoming' => (int) $data['lastUpdate'],
             'current' => $this->lastUpdate,
         ]);
-    
+
               return;
             }
-      
+
         // هر پیام باید وضعیت کامل هر دو سمت را داشته باشد.
         if (
             !isset($data['bids'], $data['asks']) ||
@@ -97,6 +99,8 @@ class OrderBookHandler
         $this->bids = $bids;
         $this->asks = $asks;
         $this->valid = true;
+
+        $this->lastReceivedAt = hrtime(true);
 
         if (isset($data['lastTradePrice'])) {
             $this->lastTradePrice = (string)$data['lastTradePrice'];
@@ -197,8 +201,7 @@ class OrderBookHandler
         $this->asks = [];
 
         $this->lastTradePrice = null;
-        $this->lastUpdate = null;
-
+        $this->lastReceivedAt = null;
         Log::warning('Nobitex order book invalidated.', [
             'reason' => $reason,
         ]);
@@ -284,5 +287,25 @@ class OrderBookHandler
     public function invalidateConnection(): void
     {
         $this->invalidate('WebSocket connection lost.');
+    }
+
+    public function isFresh(int $maxAgeMs): bool
+    {
+        if (!$this->valid || $this->lastReceivedAt === null || $maxAgeMs < 0) {
+            return false;
+        }
+
+        $ageNs = hrtime(true) - $this->lastReceivedAt;
+
+        return $ageNs <= $maxAgeMs * 1_000_000;
+    }
+
+    public function getDataAgeMs(): ?float
+    {
+        if (!$this->valid || $this->lastReceivedAt === null) {
+            return null;
+        }
+
+        return (hrtime(true) - $this->lastReceivedAt) / 1_000_000;
     }
 }

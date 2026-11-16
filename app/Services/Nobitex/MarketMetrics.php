@@ -24,8 +24,12 @@ readonly class MarketMetrics
             $bid = BigDecimal::of($snapshot->bestBidPrice);
             $ask = BigDecimal::of($snapshot->bestAskPrice);
             $spread = $ask->minus($bid);
-            if (!$bid->isZero()) {
-                $spreadPercentage = $spread->dividedBy($bid, 10, RoundingMode::HalfUp)->multipliedBy(100)->toScale(6, RoundingMode::HalfUp)->__toString();
+
+            if ($bid->isPositive()) {
+                $spreadPercentage = $spread
+                    ->multipliedBy(100)
+                    ->dividedBy($bid, 12, RoundingMode::HalfUp)
+                    ->__toString();
             }
             $spread = $spread->__toString();
         }
