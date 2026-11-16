@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Services\Nobitex\MarketDataManager;
+use App\Services\Nobitex\MarketDataMessageRouter;
 use App\Services\Nobitex\OrderBookHandler;
 use App\Services\Nobitex\SimpleStrategy;
 use App\Services\Nobitex\StrategyInterface;
@@ -43,6 +44,8 @@ class NobitexServiceProvider extends ServiceProvider
                 return $manager;
             }
         );
+
+        $this->app->singleton(MarketDataMessageRouter::class);
     }
 
     /**
