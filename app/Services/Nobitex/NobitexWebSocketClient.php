@@ -15,13 +15,33 @@ class NobitexWebSocketClient
     private string $host = 'ws.nobitex.ir';
     private string $path = '/connection/websocket';
     private int $port = 443;
-
-    public function __construct(private readonly OrderBookHandler $orderBookHandler)
+    private int $requestId = 2;
+    public function __construct(
+        private readonly MarketDataManager       $marketDataManager,
+        private readonly MarketDataMessageRouter $messageRouter,
+    )
     {
     }
 
-    public function run(string $channel): void
+    public function run(array $channels): void
     {
+        $symbols = [];
+
+        foreach ($channels as $channel) {
+            if (preg_match('/^public:orderbook-([A-Z0-9]+)$/', $channel, $matches)) {
+                $symbols[] = $matches[1];
+            }
+        }
+
+        $symbols = array_values(array_unique($symbols));
+
+        if (empty($symbols)) {
+            throw new RuntimeException('No valid market channels provided.');
+        }
+
+        $this->marketDataManager->registerMarkets($symbols);
+
+
         $attempt = 0;
 
         while (true) {
@@ -34,9 +54,10 @@ class NobitexWebSocketClient
 
                 echo "Connected.\n";
 
-                $this->subscribe($channel);
-
-                echo "Subscribed.\n";
+                foreach ($channels as $channel) {
+                    $this->subscribe($channel);
+                    echo "Subscribed: {$channel}\n";
+                }
 
                 $attempt = 0;
 
@@ -55,7 +76,7 @@ class NobitexWebSocketClient
                 echo "Error: {$e->getMessage()}\n";
             }
 
-            $this->orderBookHandler->invalidateConnection();
+            $this->marketDataManager->invalidateAll();
 
             $this->close();
 
@@ -183,7 +204,7 @@ class NobitexWebSocketClient
     public function subscribe(string $channel): void
     {
         $payload = [
-            'id' => 2,
+            'id' => $this->requestId++,
             'subscribe' => [
                 'channel' => $channel,
             ],
@@ -244,13 +265,13 @@ class NobitexWebSocketClient
 //            dump("----- WS ORDERBOOK ali-----");
 //
 //            dump($response);
-Log::debug('Nobitex orderbook update metadata', [
-    'lastUpdate' => $data['lastUpdate'] ?? null,
-    'lastUpdateType' => isset($data['lastUpdate'])
-        ? get_debug_type($data['lastUpdate'])
-        : 'missing',
-]);
-            $this->orderBookHandler->handle($data);
+            Log::debug('Nobitex orderbook update metadata', [
+                'lastUpdate' => $data['lastUpdate'] ?? null,
+                'lastUpdateType' => isset($data['lastUpdate'])
+                    ? get_debug_type($data['lastUpdate'])
+                    : 'missing',
+            ]);
+            $this->messageRouter->route($response);
 
             return;
         }
