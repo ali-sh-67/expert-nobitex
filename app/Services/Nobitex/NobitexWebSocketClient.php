@@ -23,7 +23,7 @@ class NobitexWebSocketClient
     public function __construct(
         private readonly MarketDataManager       $marketDataManager,
         private readonly MarketDataMessageRouter $messageRouter,
-        private readonly SubscriptionManager $subscriptionManager,
+        private readonly SubscriptionManager     $subscriptionManager,
     )
     {
     }
@@ -83,7 +83,7 @@ class NobitexWebSocketClient
                 echo "Error: {$e->getMessage()}\n";
             }
 
-            $this->marketDataManager->invalidateAll();
+            $this->marketDataManager->suspendAll();
 
             $this->close();
 
@@ -194,7 +194,7 @@ class NobitexWebSocketClient
         return null;
     }
 
-    private function send(array $payload): void
+    protected function send(array $payload): void
     {
         $message = json_encode(
             $payload,
@@ -296,7 +296,7 @@ class NobitexWebSocketClient
             }
 
             $requestId = isset($response['id'])
-                ? (int) $response['id']
+                ? (int)$response['id']
                 : 0;
 
             // پاسخ درخواست Subscribe
@@ -336,9 +336,10 @@ class NobitexWebSocketClient
     }
 
     private function handleSubscribeReply(
-        int $requestId,
+        int   $requestId,
         array $response
-    ): void {
+    ): void
+    {
         $pending = $this->pendingSubscriptions[$requestId];
 
         unset($this->pendingSubscriptions[$requestId]);
@@ -365,12 +366,12 @@ class NobitexWebSocketClient
         // اگر سرور این فیلد را برگردانده باشد، مقدار سرور ملاک است.
         // در غیر این صورت از درخواست ارسالی استفاده می‌کنیم.
         $wasRecovering = array_key_exists('was_recovering', $result)
-            ? (bool) $result['was_recovering']
+            ? (bool)$result['was_recovering']
             : $pending['recovery_requested'];
 
-        $recovered = (bool) ($result['recovered'] ?? false);
+        $recovered = (bool)($result['recovered'] ?? false);
 
-        $this->subscriptionManager->updateSubscription(
+        $recoveryAccepted = $this->subscriptionManager->updateSubscription(
             $channel,
             isset($result['epoch']) && $result['epoch'] !== ''
                 ? (string) $result['epoch']
@@ -401,61 +402,155 @@ class NobitexWebSocketClient
         }
 
         // پردازش Publicationهای داخل پاسخ Subscribe
-        $publications = $result['publications'] ?? [];
+        $publicationsProcessed = true;
 
-        foreach ($publications as $publication) {
+        foreach ($result['publications'] ?? [] as $publication) {
             if (!is_array($publication)) {
-                continue;
+                $publicationsProcessed = false;
+                $this->subscriptionManager->invalidate($channel);
+                break;
             }
 
-            $this->handlePublication([
+            $processed = $this->handlePublication([
                 'push' => [
                     'channel' => $channel,
                     'pub' => $publication,
                 ],
             ]);
+
+            if (!$processed) {
+                $publicationsProcessed = false;
+                break;
+            }
+        }
+
+        // فقط پس از Recovery موفق و پردازش تمام Publicationها
+        if ($recoveryAccepted && $publicationsProcessed) {
+            if (preg_match(
+                '/^public:orderbook-([A-Z0-9]+)$/',
+                $channel,
+                $matches
+            )) {
+                $symbol = $matches[1];
+
+                if ($this->marketDataManager->getHandler($symbol) !== null) {
+                    $resumed = $this->marketDataManager->resumeMarket($symbol);
+
+                    if (!$resumed) {
+                        Log::warning('Order book could not resume after recovery.', [
+                            'channel' => $channel,
+                        ]);
+                    }
+                }
+            }
         }
     }
 
-    private function handlePublication(array $message): void
+    private function handlePublication(array $message): bool
     {
         $push = $message['push'] ?? [];
-
         $channel = $push['channel'] ?? null;
         $publication = $push['pub'] ?? null;
 
+        if (!is_string($channel) || !is_array($publication)) {
+            Log::warning('Invalid Nobitex publication envelope.');
+            return false;
+        }
+
+        // استخراج و اعتبارسنجی Offset
+        $rawOffset = $publication['offset'] ?? null;
+
         if (
-            !is_string($channel) ||
-            !is_array($publication)
+            !is_int($rawOffset) &&
+            !(is_string($rawOffset) && ctype_digit($rawOffset))
         ) {
-            Log::warning('Invalid Nobitex publication', [
-                'message' => $message,
+            Log::warning('Invalid publication offset.', [
+                'channel' => $channel,
+                'offset' => $rawOffset,
             ]);
 
-            return;
+            $this->subscriptionManager->invalidate($channel);
+            return false;
         }
 
-        Log::debug('Nobitex orderbook update metadata', [
-            'channel' => $channel,
-            'offset' => $publication['offset'] ?? null,
-            'lastUpdate' => $publication['data']['lastUpdate'] ?? null,
-        ]);
+        $offset = (int)$rawOffset;
 
-        // پیام عادی و بازیابی‌شده از یک مسیر عبور می‌کنند.
-        $processed = $this->messageRouter->route($message);
+        $subscription = $this->subscriptionManager->get($channel);
 
-        // فعلاً Router فقط bool برمی‌گرداند.
-        // در مرحله بعد نتیجه APPLIED / STALE / INVALID را دقیق می‌کنیم.
+        if ($subscription === null) {
+            Log::warning('Publication received for unknown subscription.', [
+                'channel' => $channel,
+            ]);
+
+            return false;
+        }
+
+        // جلوگیری از پردازش مجدد پیام تکراری یا خارج از ترتیب
+        if ($offset <= $subscription['offset']) {
+            Log::debug('Ignoring duplicate or old publication.', [
+                'channel' => $channel,
+                'incoming_offset' => $offset,
+                'current_offset' => $subscription['offset'],
+            ]);
+
+            return true;
+        }
+        // تشخیص جا افتادن پیام در جریان کانال
         if (
-            $processed === true &&
-            isset($publication['offset']) &&
-            is_numeric($publication['offset'])
+            $subscription['positioned'] &&
+            $offset > $subscription['offset'] + 1
         ) {
-            $this->subscriptionManager->updateOffset(
-                $channel,
-                (int) $publication['offset']
+            Log::error('Centrifugo publication gap detected.', [
+                'channel' => $channel,
+                'expected_offset' => $subscription['offset'] + 1,
+                'received_offset' => $offset,
+            ]);
+
+            // اتصال را قطع می‌کنیم تا با آخرین Offset سالم
+            // دوباره Recovery درخواست شود.
+            throw new RuntimeException(
+                "Publication gap detected for {$channel}."
             );
         }
+        // پردازش پیام توسط Router
+        $processed = $this->messageRouter->route($message);
+
+        if (!$processed) {
+            $this->subscriptionManager->invalidate($channel);
+
+            if (preg_match(
+                '/^public:orderbook-([A-Z0-9]+)$/',
+                $channel,
+                $matches
+            )) {
+                $symbol = $matches[1];
+
+                if ($this->marketDataManager->getHandler($symbol) !== null) {
+                    $this->marketDataManager->invalidateMarket($symbol);
+                }
+            }
+
+            Log::warning('Order book publication processing failed.', [
+                'channel' => $channel,
+                'offset' => $offset,
+            ]);
+
+            return false;
+        }
+
+        // ثبت Offset فقط پس از پردازش موفق
+        $updated = $this->subscriptionManager->updateOffset(
+            $channel,
+            $offset
+        );
+
+        if (!$updated) {
+            Log::warning('Failed to update subscription offset.', [
+                'channel' => $channel,
+                'offset' => $offset,
+            ]);
+        }
+        return $updated;
     }
 
     private function handleHeartbeat(): void

@@ -78,4 +78,57 @@ class MarketDataManagerTest extends TestCase
             $this->assertFalse($handler->isValid());
         }
     }
+
+    private function snapshot(): array
+    {
+        return [
+            'bids' => [
+                ['100', '2'],
+                ['99', '3'],
+            ],
+            'asks' => [
+                ['101', '4'],
+                ['102', '5'],
+            ],
+            'lastTradePrice' => '100.5',
+            'lastUpdate' => 1000,
+        ];
+    }
+
+    public function test_it_preserves_orderbook_during_connection_suspension(): void
+    {
+        $manager = new MarketDataManager();
+
+        $manager->registerMarket('BTCIRT');
+        $manager->initialize('BTCIRT', $this->snapshot());
+
+        $handler = $manager->getHandler('BTCIRT');
+
+        $this->assertTrue($handler->isValid());
+        $this->assertSame('100', $handler->getBestBidPrice());
+
+        $manager->suspendAll();
+
+        $this->assertFalse($handler->isValid());
+
+        // داده قبلی نباید در زمان تعلیق قابل استفاده باشد.
+        $this->assertNull($handler->getBestBidPrice());
+
+        // پس از Recovery موفق، اطلاعات قبلی قابل استفاده می‌شوند.
+        $this->assertTrue($manager->resumeMarket('BTCIRT'));
+
+        $this->assertTrue($handler->isValid());
+        $this->assertSame('100', $handler->getBestBidPrice());
+        $this->assertSame('101', $handler->getBestAskPrice());
+    }
+
+    public function test_it_cannot_resume_market_without_existing_orderbook(): void
+    {
+        $manager = new MarketDataManager();
+
+        $handler = $manager->registerMarket('BTCIRT');
+
+        $this->assertFalse($manager->resumeMarket('BTCIRT'));
+        $this->assertFalse($handler->isValid());
+    }
 }

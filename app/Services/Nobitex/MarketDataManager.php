@@ -83,4 +83,30 @@ class MarketDataManager
 
         return $symbol;
     }
+
+    /**
+     * تعلیق موقت یک بازار هنگام قطع اتصال
+     */
+    public function suspendMarket(string $symbol): void
+    {
+        $this->requireHandler($symbol)->suspendConnection();
+    }
+
+    /**
+     * تعلیق تمام بازارها هنگام قطع WebSocket
+     */
+    public function suspendAll(): void
+    {
+        foreach ($this->handlers as $handler) {
+            $handler->suspendConnection();
+        }
+    }
+
+    /**
+     * بازگرداندن اعتبار بازار پس از Recovery موفق
+     */
+    public function resumeMarket(string $symbol): bool
+    {
+        return $this->requireHandler($symbol)->resumeAfterRecovery();
+    }
 }

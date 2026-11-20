@@ -320,4 +320,33 @@ class OrderBookHandler
 
         return (hrtime(true) - $this->lastReceivedAt) / 1_000_000;
     }
+
+    /**
+     * تعلیق موقت OrderBook هنگام قطع اتصال
+     * اطلاعات قبلی حفظ می‌شوند.
+     */
+    public function suspendConnection(): void
+    {
+        if (!$this->valid) {
+            return;
+        }
+
+        $this->valid = false;
+        $this->lastReceivedAt = null;
+    }
+
+    /**
+     * بازگرداندن اعتبار داده پس از Recovery موفق
+     */
+    public function resumeAfterRecovery(): bool
+    {
+        if ($this->bids === [] || $this->asks === []) {
+            return false;
+        }
+
+        $this->valid = true;
+        $this->lastReceivedAt = hrtime(true);
+
+        return true;
+    }
 }
