@@ -4,10 +4,9 @@ namespace App\Providers;
 
 use App\Services\Nobitex\MarketDataManager;
 use App\Services\Nobitex\MarketDataMessageRouter;
-use App\Services\Nobitex\OrderBookHandler;
 use App\Services\Nobitex\SimpleStrategy;
-use App\Services\Nobitex\StrategyInterface;
 use App\Services\Nobitex\StrategyRegistry;
+use App\Services\Nobitex\SubscriptionManager;
 use Illuminate\Support\ServiceProvider;
 
 class NobitexServiceProvider extends ServiceProvider
@@ -17,7 +16,6 @@ class NobitexServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->singleton(OrderBookHandler::class);
         $this->app->singleton(SimpleStrategy::class);
 
         $this->app->tag(
@@ -27,7 +25,7 @@ class NobitexServiceProvider extends ServiceProvider
 
         $this->app->singleton(
             StrategyRegistry::class,
-            fn ($app) => new StrategyRegistry(
+            fn($app) => new StrategyRegistry(
                 $app->tagged('nobitex.strategies')
             )
         );
@@ -46,6 +44,8 @@ class NobitexServiceProvider extends ServiceProvider
         );
 
         $this->app->singleton(MarketDataMessageRouter::class);
+
+        $this->app->singleton(SubscriptionManager::class);
     }
 
     /**

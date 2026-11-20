@@ -5,20 +5,29 @@ namespace App\Services\Nobitex;
 readonly class SignalManager
 {
     public function __construct(
-        private OrderBookHandler   $orderBookHandler,
+        private MarketDataManager $marketDataManager,
         private StrategyAggregator $aggregator,
-    )
-    {
+    ) {
     }
 
-    public function evaluate(): StrategyResult
+    public function evaluate(string $symbol): StrategyResult
     {
-        $maxAge = (int)config(
+        $handler = $this->marketDataManager->getHandler($symbol);
+
+        if ($handler === null) {
+            return new StrategyResult(
+                Signal::HOLD,
+                0.0,
+                'market_not_registered',
+            );
+        }
+
+        $maxAge = (int) config(
             'nobitex.market.max_order_book_age_ms',
             1500
         );
 
-        if (!$this->orderBookHandler->isFresh($maxAge)) {
+        if (!$handler->isFresh($maxAge)) {
             return new StrategyResult(
                 Signal::HOLD,
                 0.0,
@@ -26,7 +35,7 @@ readonly class SignalManager
             );
         }
 
-        $snapshot = $this->orderBookHandler->snapshot();
+        $snapshot = $handler->snapshot();
 
         $context = new MarketContext(
             $snapshot,
@@ -49,5 +58,4 @@ readonly class SignalManager
             $mode,
         );
     }
-
 }

@@ -43,31 +43,39 @@ class OrderBookHandler
 
     public function initialize(array $data): void
     {
-        $this->handle($data);
+        $this->applySnapshot($data, false);
     }
 
-    public function handle(array $data): void
+    public function handle(array $data): bool
     {
-          if (
-              isset($data['lastUpdate'], $this->lastUpdate) &&
-              (int) $data['lastUpdate'] < $this->lastUpdate
-           ) {
-              Log::warning('Ignoring stale order book update.', [
-            'incoming' => (int) $data['lastUpdate'],
-            'current' => $this->lastUpdate,
-        ]);
+        return $this->applySnapshot($data, true);
+    }
 
-              return;
-            }
+    private function applySnapshot(array $data, bool $rejectOlder): bool
+    {
+        // پیام قدیمی‌تر از وضعیت فعلی است؛ آن را اعمال نمی‌کنیم،
+        // اما چون آگاهانه پردازش و کنار گذاشته شده، قابل ثبت است.
+        if (
+            $rejectOlder &&
+            isset($data['lastUpdate'], $this->lastUpdate) &&
+            (int) $data['lastUpdate'] < $this->lastUpdate
+        ) {
+            Log::warning('Ignoring stale order book update.', [
+                'incoming' => (int) $data['lastUpdate'],
+                'current' => $this->lastUpdate,
+            ]);
 
-        // هر پیام باید وضعیت کامل هر دو سمت را داشته باشد.
+            return true;
+        }
+
         if (
             !isset($data['bids'], $data['asks']) ||
             !is_array($data['bids']) ||
             !is_array($data['asks'])
         ) {
             $this->invalidate('Missing or invalid bids/asks arrays.');
-            return;
+
+            return false;
         }
 
         try {
@@ -91,9 +99,11 @@ class OrderBookHandler
                     'Best bid is greater than or equal to best ask.'
                 );
             }
+
         } catch (Throwable $e) {
             $this->invalidate($e->getMessage());
-            return;
+
+            return false;
         }
 
         $this->bids = $bids;
@@ -103,12 +113,14 @@ class OrderBookHandler
         $this->lastReceivedAt = hrtime(true);
 
         if (isset($data['lastTradePrice'])) {
-            $this->lastTradePrice = (string)$data['lastTradePrice'];
+            $this->lastTradePrice = (string) $data['lastTradePrice'];
         }
 
         if (isset($data['lastUpdate'])) {
-            $this->lastUpdate = (int)$data['lastUpdate'];
+            $this->lastUpdate = (int) $data['lastUpdate'];
         }
+
+        return true;
     }
 
     /**

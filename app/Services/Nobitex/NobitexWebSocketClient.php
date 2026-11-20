@@ -16,9 +16,14 @@ class NobitexWebSocketClient
     private string $path = '/connection/websocket';
     private int $port = 443;
     private int $requestId = 2;
+
+    private array $pendingSubscriptions = [];
+
+
     public function __construct(
         private readonly MarketDataManager       $marketDataManager,
         private readonly MarketDataMessageRouter $messageRouter,
+        private readonly SubscriptionManager $subscriptionManager,
     )
     {
     }
@@ -50,8 +55,10 @@ class NobitexWebSocketClient
 
                 echo "Connecting...\n";
 
-                $this->connect();
+                $this->requestId = 2;
+                $this->pendingSubscriptions = [];
 
+                $this->connect();
                 echo "Connected.\n";
 
                 foreach ($channels as $channel) {
@@ -203,26 +210,41 @@ class NobitexWebSocketClient
 
     public function subscribe(string $channel): void
     {
-        $payload = [
-            'id' => $this->requestId++,
-            'subscribe' => [
-                'channel' => $channel,
-            ],
+        $recoveryPosition = $this->subscriptionManager
+            ->getRecoveryPosition($channel);
+
+        $subscribePayload = [
+            'channel' => $channel,
         ];
 
-        $this->send($payload);
-
-        $frame = $this->receive();
-
-        if ($frame === null) {
-            throw new RuntimeException(
-                'Subscribe response not received.'
-            );
+        if ($recoveryPosition !== null) {
+            $subscribePayload['recover'] = true;
+            $subscribePayload['epoch'] = $recoveryPosition['epoch'];
+            $subscribePayload['offset'] = $recoveryPosition['offset'];
         }
 
-        Log::info('Nobitex channel subscribed', [
+        $requestId = $this->requestId++;
+
+        $this->pendingSubscriptions[$requestId] = [
             'channel' => $channel,
-            'response' => $frame,
+            'recovery_requested' => $recoveryPosition !== null,
+        ];
+
+        try {
+            $this->send([
+                'id' => $requestId,
+                'subscribe' => $subscribePayload,
+            ]);
+        } catch (Throwable $e) {
+            unset($this->pendingSubscriptions[$requestId]);
+            throw $e;
+        }
+
+        Log::info('Nobitex subscribe request sent', [
+            'channel' => $channel,
+            'request_id' => $requestId,
+            'recovery_requested' => $recoveryPosition !== null,
+            'recovery_position' => $recoveryPosition,
         ]);
     }
 
@@ -245,39 +267,195 @@ class NobitexWebSocketClient
 
     private function handleResponse(string $message): void
     {
-        $response = json_decode($message, true);
+        $lines = preg_split('/\r\n|\n|\r/', trim($message));
 
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            return;
-        }
+        foreach ($lines as $line) {
+            $line = trim($line);
 
-        if ($response === []) {
-            echo "Heartbeat received -> Pong\n";
+            if ($line === '') {
+                continue;
+            }
 
-            $this->handleHeartbeat();
+            $response = json_decode($line, true);
 
-            return;
-        }
+            if (
+                json_last_error() !== JSON_ERROR_NONE ||
+                !is_array($response)
+            ) {
+                Log::warning('Invalid WebSocket JSON response', [
+                    'message' => $line,
+                ]);
 
-        if (isset($response['push']['pub']['data'])) {
-            $data = $response['push']['pub']['data'];
-//
-//            dump("----- WS ORDERBOOK ali-----");
-//
-//            dump($response);
-            Log::debug('Nobitex orderbook update metadata', [
-                'lastUpdate' => $data['lastUpdate'] ?? null,
-                'lastUpdateType' => isset($data['lastUpdate'])
-                    ? get_debug_type($data['lastUpdate'])
-                    : 'missing',
+                continue;
+            }
+
+            // Heartbeat
+            if ($response === []) {
+                $this->handleHeartbeat();
+                continue;
+            }
+
+            $requestId = isset($response['id'])
+                ? (int) $response['id']
+                : 0;
+
+            // پاسخ درخواست Subscribe
+            if (
+                $requestId > 0 &&
+                isset($this->pendingSubscriptions[$requestId])
+            ) {
+                $this->handleSubscribeReply($requestId, $response);
+                continue;
+            }
+
+            // Publication عادی
+            if (isset($response['push']['pub'])) {
+                $this->handlePublication($response);
+                continue;
+            }
+
+            // پاسخ اتصال
+            if (isset($response['connect'])) {
+                Log::info('Nobitex WebSocket handshake response received');
+                continue;
+            }
+
+            // خطای سایر درخواست‌ها
+            if (isset($response['error'])) {
+                Log::warning('Nobitex WebSocket command error', [
+                    'response' => $response,
+                ]);
+
+                continue;
+            }
+
+            Log::debug('Other Nobitex WebSocket message', [
+                'response' => $response,
             ]);
-            $this->messageRouter->route($response);
+        }
+    }
+
+    private function handleSubscribeReply(
+        int $requestId,
+        array $response
+    ): void {
+        $pending = $this->pendingSubscriptions[$requestId];
+
+        unset($this->pendingSubscriptions[$requestId]);
+
+        $channel = $pending['channel'];
+
+        if (isset($response['error'])) {
+            $this->subscriptionManager->invalidate($channel);
+
+            throw new RuntimeException(
+                "Subscribe failed for {$channel}: " .
+                json_encode($response['error'])
+            );
+        }
+
+        $result = $response['subscribe'] ?? null;
+
+        if (!is_array($result)) {
+            throw new RuntimeException(
+                "Invalid Subscribe response for {$channel}."
+            );
+        }
+
+        // اگر سرور این فیلد را برگردانده باشد، مقدار سرور ملاک است.
+        // در غیر این صورت از درخواست ارسالی استفاده می‌کنیم.
+        $wasRecovering = array_key_exists('was_recovering', $result)
+            ? (bool) $result['was_recovering']
+            : $pending['recovery_requested'];
+
+        $recovered = (bool) ($result['recovered'] ?? false);
+
+        $this->subscriptionManager->updateSubscription(
+            $channel,
+            isset($result['epoch']) && $result['epoch'] !== ''
+                ? (string) $result['epoch']
+                : null,
+            isset($result['offset']) && is_numeric($result['offset'])
+                ? (int) $result['offset']
+                : 0,
+            (bool) ($result['recoverable'] ?? false),
+            (bool) ($result['positioned'] ?? false),
+            $wasRecovering,
+            $recovered
+        );
+
+        Log::info('Nobitex subscription established', [
+            'channel' => $channel,
+            'was_recovering' => $wasRecovering,
+            'recovered' => $recovered,
+            'epoch' => $result['epoch'] ?? null,
+            'offset' => $result['offset'] ?? null,
+            'recoverable' => $result['recoverable'] ?? false,
+            'positioned' => $result['positioned'] ?? false,
+        ]);
+
+        if ($wasRecovering && !$recovered) {
+            Log::warning('Nobitex subscription recovery failed', [
+                'channel' => $channel,
+            ]);
+        }
+
+        // پردازش Publicationهای داخل پاسخ Subscribe
+        $publications = $result['publications'] ?? [];
+
+        foreach ($publications as $publication) {
+            if (!is_array($publication)) {
+                continue;
+            }
+
+            $this->handlePublication([
+                'push' => [
+                    'channel' => $channel,
+                    'pub' => $publication,
+                ],
+            ]);
+        }
+    }
+
+    private function handlePublication(array $message): void
+    {
+        $push = $message['push'] ?? [];
+
+        $channel = $push['channel'] ?? null;
+        $publication = $push['pub'] ?? null;
+
+        if (
+            !is_string($channel) ||
+            !is_array($publication)
+        ) {
+            Log::warning('Invalid Nobitex publication', [
+                'message' => $message,
+            ]);
 
             return;
         }
 
-        echo "Other message:\n";
-        var_dump($response);
+        Log::debug('Nobitex orderbook update metadata', [
+            'channel' => $channel,
+            'offset' => $publication['offset'] ?? null,
+            'lastUpdate' => $publication['data']['lastUpdate'] ?? null,
+        ]);
+
+        // پیام عادی و بازیابی‌شده از یک مسیر عبور می‌کنند.
+        $processed = $this->messageRouter->route($message);
+
+        // فعلاً Router فقط bool برمی‌گرداند.
+        // در مرحله بعد نتیجه APPLIED / STALE / INVALID را دقیق می‌کنیم.
+        if (
+            $processed === true &&
+            isset($publication['offset']) &&
+            is_numeric($publication['offset'])
+        ) {
+            $this->subscriptionManager->updateOffset(
+                $channel,
+                (int) $publication['offset']
+            );
+        }
     }
 
     private function handleHeartbeat(): void

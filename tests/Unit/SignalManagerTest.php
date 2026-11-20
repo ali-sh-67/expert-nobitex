@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Services\Nobitex\OrderBookHandler;
+use App\Services\Nobitex\MarketDataManager;
 use App\Services\Nobitex\Signal;
 use App\Services\Nobitex\SignalManager;
 use App\Services\Nobitex\SimpleStrategy;
@@ -16,11 +16,11 @@ class SignalManagerTest extends TestCase
     #[Test]
     public function it_returns_hold_for_invalid_order_book(): void
     {
-        $handler = new OrderBookHandler();
-
+        $marketDataManager = new MarketDataManager();
+        $marketDataManager->registerMarket('BTCIRT');
 
         $manager = new SignalManager(
-            $handler,
+            $marketDataManager,
             new StrategyAggregator(
                 new StrategyRegistry([
                     new SimpleStrategy(),
@@ -30,14 +30,16 @@ class SignalManagerTest extends TestCase
 
         $this->assertSame(
             Signal::HOLD,
-            $manager->evaluate()->signal
+            $manager->evaluate('BTCIRT')->signal
         );
     }
 
     #[Test]
     public function it_evaluates_a_fresh_order_book(): void
     {
-        $handler = new OrderBookHandler();
+        $marketDataManager = new MarketDataManager();
+
+        $handler = $marketDataManager->registerMarket('BTCIRT');
 
         $handler->initialize([
             'bids' => [['100', '4']],
@@ -47,7 +49,7 @@ class SignalManagerTest extends TestCase
         ]);
 
         $manager = new SignalManager(
-            $handler,
+            $marketDataManager,
             new StrategyAggregator(
                 new StrategyRegistry([
                     new SimpleStrategy(),
@@ -55,10 +57,9 @@ class SignalManagerTest extends TestCase
             )
         );
 
-
         $this->assertSame(
             Signal::BUY,
-            $manager->evaluate()->signal
+            $manager->evaluate('BTCIRT')->signal
         );
     }
 }

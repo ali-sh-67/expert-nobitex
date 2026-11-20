@@ -32,13 +32,13 @@ class MarketDataMessageRouter
 
         $symbol = $matches[1];
 
-        $handler = $this->marketDataManager->getHandler($symbol);
+        $publication = $push['pub'] ?? null;
 
-        if ($handler === null) {
+        if (!is_array($publication)) {
             return false;
         }
 
-        $rawData = $push['pub']['data'] ?? null;
+        $rawData = $publication['data'] ?? null;
 
         if (is_string($rawData)) {
             try {
@@ -59,8 +59,10 @@ class MarketDataMessageRouter
             return false;
         }
 
-        $this->marketDataManager->handle($symbol, $data);
-
-        return true;
+        try {
+            return $this->marketDataManager->handle($symbol, $data);
+        } catch (\InvalidArgumentException) {
+            return false;
+        }
     }
 }

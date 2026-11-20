@@ -34,9 +34,9 @@ class MarketDataManager
         $this->requireHandler($symbol)->initialize($data);
     }
 
-    public function handle(string $symbol, array $data): void
+    public function handle(string $symbol, array $data): bool
     {
-        $this->requireHandler($symbol)->handle($data);
+        return $this->requireHandler($symbol)->handle($data);
     }
 
     public function invalidateMarket(string $symbol): void
