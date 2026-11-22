@@ -26,6 +26,8 @@ class NobitexWebSocketClientTest extends TestCase
     {
         parent::setUp();
 
+        config(['nobitex.orderbook_mode' => 'delta']);
+
         $this->subscriptionManager = new SubscriptionManager();
 
         $this->router = $this->createMock(

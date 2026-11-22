@@ -7,6 +7,8 @@ use RuntimeException;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Http\Client;
 use Swoole\WebSocket\Frame;
+use App\Enums\OrderBookMode;
+use UnexpectedValueException;
 use Throwable;
 
 class NobitexWebSocketClient
@@ -208,19 +210,34 @@ class NobitexWebSocketClient
         }
     }
 
+
     public function subscribe(string $channel): void
     {
-        $recoveryPosition = $this->subscriptionManager
-            ->getRecoveryPosition($channel);
+        $mode = OrderBookMode::tryFrom(
+            config('nobitex.orderbook_mode', 'snapshot')
+        );
+
+        if ($mode === null) {
+            throw new UnexpectedValueException(
+                'Invalid orderbook mode configuration.'
+            );
+        }
 
         $subscribePayload = [
             'channel' => $channel,
         ];
 
-        if ($recoveryPosition !== null) {
-            $subscribePayload['recover'] = true;
-            $subscribePayload['epoch'] = $recoveryPosition['epoch'];
-            $subscribePayload['offset'] = $recoveryPosition['offset'];
+        $recoveryPosition = null;
+
+        if ($mode === OrderBookMode::DELTA) {
+            $recoveryPosition = $this->subscriptionManager
+                ->getRecoveryPosition($channel);
+
+            if ($recoveryPosition !== null) {
+                $subscribePayload['recover'] = true;
+                $subscribePayload['epoch'] = $recoveryPosition['epoch'];
+                $subscribePayload['offset'] = $recoveryPosition['offset'];
+            }
         }
 
         $requestId = $this->requestId++;
@@ -240,13 +257,15 @@ class NobitexWebSocketClient
             throw $e;
         }
 
-        Log::info('Nobitex subscribe request sent', [
+        Log::info('Nobitex subscription request sent', [
             'channel' => $channel,
             'request_id' => $requestId,
+            'mode' => $mode->value,
             'recovery_requested' => $recoveryPosition !== null,
             'recovery_position' => $recoveryPosition,
         ]);
     }
+
 
     public function listen(): void
     {
@@ -335,23 +354,31 @@ class NobitexWebSocketClient
         }
     }
 
-    private function handleSubscribeReply(
-        int   $requestId,
-        array $response
-    ): void
+
+    private function handleSubscribeReply(int $requestId, array $response): void
     {
         $pending = $this->pendingSubscriptions[$requestId];
-
         unset($this->pendingSubscriptions[$requestId]);
 
         $channel = $pending['channel'];
 
+        $mode = OrderBookMode::tryFrom(
+            config('nobitex.orderbook_mode', 'snapshot')
+        );
+
+        if ($mode === null) {
+            throw new UnexpectedValueException(
+                'Invalid orderbook mode configuration.'
+            );
+        }
+
         if (isset($response['error'])) {
-            $this->subscriptionManager->invalidate($channel);
+            if ($mode === OrderBookMode::DELTA) {
+                $this->subscriptionManager->invalidate($channel);
+            }
 
             throw new RuntimeException(
-                "Subscribe failed for {$channel}: " .
-                json_encode($response['error'])
+                "Subscribe failed for {$channel}: " . json_encode($response['error'])
             );
         }
 
@@ -363,13 +390,38 @@ class NobitexWebSocketClient
             );
         }
 
-        // اگر سرور این فیلد را برگردانده باشد، مقدار سرور ملاک است.
-        // در غیر این صورت از درخواست ارسالی استفاده می‌کنیم.
+        // Snapshot: بدون Recovery و مدیریت Offset
+        if ($mode === OrderBookMode::SNAPSHOT) {
+            Log::info('Nobitex snapshot subscription established', [
+                'channel' => $channel,
+            ]);
+
+            foreach ($result['publications'] ?? [] as $publication) {
+                if (!is_array($publication)) {
+                    Log::warning('Invalid publication in subscribe response.', [
+                        'channel' => $channel,
+                    ]);
+
+                    continue;
+                }
+
+                $this->handlePublication([
+                    'push' => [
+                        'channel' => $channel,
+                        'pub' => $publication,
+                    ],
+                ]);
+            }
+
+            return;
+        }
+
+        // Delta: ثبت موقعیت و مدیریت Recovery
         $wasRecovering = array_key_exists('was_recovering', $result)
-            ? (bool)$result['was_recovering']
+            ? (bool) $result['was_recovering']
             : $pending['recovery_requested'];
 
-        $recovered = (bool)($result['recovered'] ?? false);
+        $recovered = (bool) ($result['recovered'] ?? false);
 
         $recoveryAccepted = $this->subscriptionManager->updateSubscription(
             $channel,
@@ -401,7 +453,6 @@ class NobitexWebSocketClient
             ]);
         }
 
-        // پردازش Publicationهای داخل پاسخ Subscribe
         $publicationsProcessed = true;
 
         foreach ($result['publications'] ?? [] as $publication) {
@@ -446,6 +497,8 @@ class NobitexWebSocketClient
         }
     }
 
+
+
     private function handlePublication(array $message): bool
     {
         $push = $message['push'] ?? [];
@@ -457,7 +510,57 @@ class NobitexWebSocketClient
             return false;
         }
 
-        // استخراج و اعتبارسنجی Offset
+        if (!preg_match('/^public:orderbook-([A-Z0-9]+)$/', $channel, $matches)) {
+            Log::warning('Invalid orderbook channel.', ['channel' => $channel]);
+            return false;
+        }
+
+        $symbol = $matches[1];
+
+        $mode = OrderBookMode::tryFrom(
+            config('nobitex.orderbook_mode', 'snapshot')
+        );
+
+        if ($mode === null) {
+            throw new UnexpectedValueException(
+                'Invalid orderbook mode configuration.'
+            );
+        }
+
+        // Snapshot: هر پیام یک دفتر سفارش کامل و مستقل است.
+        if ($mode === OrderBookMode::SNAPSHOT) {
+            $handler = $this->marketDataManager->getHandler($symbol);
+
+            if ($handler === null) {
+                Log::warning('Publication received for unregistered market.', [
+                    'symbol' => $symbol,
+                ]);
+
+                return false;
+            }
+
+            $processed = $this->messageRouter->route($message);
+
+            if (!$processed) {
+                $this->marketDataManager->invalidateMarket($symbol);
+
+                Log::warning('Snapshot processing failed.', [
+                    'channel' => $channel,
+                ]);
+
+                return false;
+            }
+
+            if (!$handler->isValid()) {
+                Log::debug('Snapshot ignored or market is not ready yet.', [
+                    'channel' => $channel,
+                ]);
+            }
+
+            return true;
+        }
+
+        // Delta: منطق Offset و Recovery برای پیاده‌سازی آینده حفظ می‌شود.
         $rawOffset = $publication['offset'] ?? null;
 
         if (
@@ -473,7 +576,7 @@ class NobitexWebSocketClient
             return false;
         }
 
-        $offset = (int)$rawOffset;
+        $offset = (int) $rawOffset;
 
         $subscription = $this->subscriptionManager->get($channel);
 
@@ -485,7 +588,6 @@ class NobitexWebSocketClient
             return false;
         }
 
-        // جلوگیری از پردازش مجدد پیام تکراری یا خارج از ترتیب
         if ($offset <= $subscription['offset']) {
             Log::debug('Ignoring duplicate or old publication.', [
                 'channel' => $channel,
@@ -495,7 +597,7 @@ class NobitexWebSocketClient
 
             return true;
         }
-        // تشخیص جا افتادن پیام در جریان کانال
+
         if (
             $subscription['positioned'] &&
             $offset > $subscription['offset'] + 1
@@ -506,28 +608,19 @@ class NobitexWebSocketClient
                 'received_offset' => $offset,
             ]);
 
-            // اتصال را قطع می‌کنیم تا با آخرین Offset سالم
-            // دوباره Recovery درخواست شود.
             throw new RuntimeException(
                 "Publication gap detected for {$channel}."
             );
         }
-        // پردازش پیام توسط Router
+
         $processed = $this->messageRouter->route($message);
+
 
         if (!$processed) {
             $this->subscriptionManager->invalidate($channel);
 
-            if (preg_match(
-                '/^public:orderbook-([A-Z0-9]+)$/',
-                $channel,
-                $matches
-            )) {
-                $symbol = $matches[1];
-
-                if ($this->marketDataManager->getHandler($symbol) !== null) {
-                    $this->marketDataManager->invalidateMarket($symbol);
-                }
+            if ($this->marketDataManager->getHandler($symbol) !== null) {
+                $this->marketDataManager->invalidateMarket($symbol);
             }
 
             Log::warning('Order book publication processing failed.', [
@@ -538,11 +631,7 @@ class NobitexWebSocketClient
             return false;
         }
 
-        // ثبت Offset فقط پس از پردازش موفق
-        $updated = $this->subscriptionManager->updateOffset(
-            $channel,
-            $offset
-        );
+        $updated = $this->subscriptionManager->updateOffset($channel, $offset);
 
         if (!$updated) {
             Log::warning('Failed to update subscription offset.', [
@@ -550,8 +639,10 @@ class NobitexWebSocketClient
                 'offset' => $offset,
             ]);
         }
+
         return $updated;
     }
+
 
     private function handleHeartbeat(): void
     {
