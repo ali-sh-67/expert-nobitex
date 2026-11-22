@@ -281,7 +281,7 @@ class OrderBookHandlerTest extends TestCase
         $this->assertFalse($handler->isValid());
         $this->assertNull($handler->getBestBidPrice());
 
-        $handler->handle([
+        $handler->applySnapshot([
             'bids' => [
                 ['200', '5'],
                 ['199', '2'],
@@ -315,7 +315,7 @@ class OrderBookHandlerTest extends TestCase
             'lastUpdate' => 200,
         ]);
 
-        $handler->handle([
+        $handler->applySnapshot([
             'bids' => [['90', '5']],
             'asks' => [['95', '4']],
             'lastUpdate' => 100,
@@ -340,7 +340,7 @@ class OrderBookHandlerTest extends TestCase
 
         $handler->invalidateConnection();
 
-        $handler->handle([
+        $handler->applySnapshot([
             'bids' => [['90', '5']],
             'asks' => [['95', '4']],
             'lastUpdate' => 100,

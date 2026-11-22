@@ -33,4 +33,15 @@ return [
             )
         )),
     ],
+  /*
+    |--------------------------------------------------------------------------
+    | Order Book Processing Mode
+    |--------------------------------------------------------------------------
+    |
+    | snapshot: Receive and process complete order books.
+    | delta: Receive and apply incremental order book updates.
+    |
+    */
+
+    'orderbook_mode' => env('NOBITEX_ORDERBOOK_MODE', 'snapshot'),
 ];

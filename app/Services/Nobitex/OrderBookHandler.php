@@ -5,6 +5,7 @@ namespace App\Services\Nobitex;
 use Brick\Math\BigDecimal;
 use Brick\Math\Exception\MathException;
 use Illuminate\Support\Facades\Log;
+use App\Enums\OrderBookMode;
 use Throwable;
 use UnexpectedValueException;
 
@@ -47,11 +48,25 @@ class OrderBookHandler
     }
 
     public function handle(array $data): bool
-    {
-        return $this->applySnapshot($data, true);
-    }
+{
+    $mode = OrderBookMode::tryFrom(
+        config('nobitex.orderbook_mode', 'snapshot')
+    );
 
-    private function applySnapshot(array $data, bool $rejectOlder): bool
+    return match ($mode) {
+        OrderBookMode::SNAPSHOT => $this->applySnapshot($data, true),
+
+        OrderBookMode::DELTA => throw new \LogicException(
+            'Delta mode is not implemented yet.'
+        ),
+
+        null => throw new \UnexpectedValueException(
+            'Invalid orderbook mode configuration.'
+        ),
+    };
+}
+  
+    public function applySnapshot(array $data, bool $rejectOlder=true): bool
     {
         // پیام قدیمی‌تر از وضعیت فعلی است؛ آن را اعمال نمی‌کنیم،
         // اما چون آگاهانه پردازش و کنار گذاشته شده، قابل ثبت است.
