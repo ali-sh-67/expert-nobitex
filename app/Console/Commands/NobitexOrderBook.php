@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\OrderBookMode;
 use App\Services\Nobitex\MarketDataManager;
 use App\Services\Nobitex\NobitexHttpClient;
 use App\Services\Nobitex\NobitexWebSocketClient;
@@ -19,11 +20,10 @@ class NobitexOrderBook extends Command
 {
     public function handle(
         NobitexWebSocketClient $client,
-        OrderBookMonitor       $monitor,
-        NobitexHttpClient      $httpClient,
-        MarketDataManager      $marketDataManager,
-    ): int
-    {
+        OrderBookMonitor $monitor,
+        NobitexHttpClient $httpClient,
+        MarketDataManager $marketDataManager,
+    ): int {
         $symbols = $marketDataManager->symbols();
 
         if (empty($symbols)) {
@@ -32,30 +32,18 @@ class NobitexOrderBook extends Command
             return self::FAILURE;
         }
 
-        $channels = [];
+        $mode = OrderBookMode::from(
+            config('nobitex.orderbook_mode', 'snapshot')
+        );
 
-        $orderBooks = $httpClient->getOrderBook('all');
-//
-//        dump($orderBooks['BTCIRT']);
-//
-        foreach ($symbols as $symbol) {
-            if (!isset($orderBooks[$symbol])) {
-                throw new \RuntimeException(
-                    "Initial order book not found: {$symbol}"
-                );
-            }
+        $channels = $this->prepareMarkets(
+            $mode,
+            $symbols,
+            $httpClient,
+            $marketDataManager
+        );
 
-            $marketDataManager->initialize(
-                $symbol,
-                $orderBooks[$symbol]
-            );
-
-            $channels[] = "public:orderbook-{$symbol}";
-
-            $this->info("Initial snapshot loaded: {$symbol}");
-        }
-
-        run(function () use ($client, $monitor, $channels, $httpClient, $marketDataManager, $symbols) {
+        run(function () use ($client, $monitor, $channels) {
             go(function () use ($client, $channels) {
                 $client->run($channels);
             });
@@ -66,45 +54,42 @@ class NobitexOrderBook extends Command
                     $monitor->printState();
                 }
             });
-
-//            //یک کوروتین مستقل که هر ۳۰ ثانیه بازارهای فاقد داده تازه را بررسی می کند.
-//            go(function () use ($httpClient, $marketDataManager, $symbols) {
-//                $maxAge = (int)config(
-//                    'nobitex.market.max_order_book_age_ms',
-//                    1500
-//                );
-//
-//                while (true) {
-//                    Coroutine::sleep(7);
-//
-//                    foreach ($symbols as $symbol) {
-//                        $handler = $marketDataManager->getHandler($symbol);
-//
-//                        if ($handler === null || $handler->isFresh($maxAge)) {
-//                            continue;
-//                        }
-//
-//                        try {
-//                            $httpClient->refreshOrderBook(
-//                                $symbol,
-//                                $marketDataManager
-//                            );
-//
-//                            Log::info('Order book REST refresh completed.', [
-//                                'symbol' => $symbol,
-//                                'fresh' => $handler->isFresh($maxAge),
-//                            ]);
-//                        } catch (Throwable $e) {
-//                            Log::warning('Order book REST refresh failed.', [
-//                                'symbol' => $symbol,
-//                                'error' => $e->getMessage(),
-//                            ]);
-//                        }
-//                    }
-//                }
-//            });
         });
 
         return self::SUCCESS;
+    }
+
+    protected function prepareMarkets(
+        OrderBookMode $mode,
+        array $symbols,
+        NobitexHttpClient $httpClient,
+        MarketDataManager $marketDataManager,
+    ): array {
+        $orderBooks = [];
+
+        if ($mode === OrderBookMode::DELTA) {
+            $orderBooks = $httpClient->getOrderBook('all');
+        }
+
+        $channels = [];
+
+        foreach ($symbols as $symbol) {
+            if ($mode === OrderBookMode::DELTA) {
+                if (!isset($orderBooks[$symbol])) {
+                    throw new \RuntimeException(
+                        "Initial order book not found: {$symbol}"
+                    );
+                }
+
+                $marketDataManager->initialize(
+                    $symbol,
+                    $orderBooks[$symbol]
+                );
+            }
+
+            $channels[] = "public:orderbook-{$symbol}";
+        }
+
+        return $channels;
     }
 }

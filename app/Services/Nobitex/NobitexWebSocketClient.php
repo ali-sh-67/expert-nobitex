@@ -68,8 +68,6 @@ class NobitexWebSocketClient
                     echo "Subscribed: {$channel}\n";
                 }
 
-                $attempt = 0;
-
                 echo "Listening...\n";
 
                 $this->listen();
@@ -128,15 +126,44 @@ class NobitexWebSocketClient
 
         $frame = $this->receive();
 
-        if ($frame === null) {
-            throw new RuntimeException('Connection response not received.');
-        }
+        $response = $this->validateHandshakeResponse($frame);
 
         Log::info('Nobitex WebSocket connected', [
-            'response' => $frame,
+            'response' => $response,
         ]);
     }
+    protected function validateHandshakeResponse(string $frame): array
+    {
+        try {
+            $response = json_decode(
+                $frame,
+                true,
+                512,
+                JSON_THROW_ON_ERROR
+            );
+        } catch (\JsonException $e) {
+            throw new RuntimeException(
+                'Invalid WebSocket handshake JSON response.',
+                0,
+                $e
+            );
+        }
 
+        if (
+            !is_array($response) ||
+            ($response['id'] ?? null) !== 1 ||
+            !is_array($response['connect'] ?? null) ||
+            !is_string($response['connect']['client'] ?? null) ||
+            $response['connect']['client'] === '' ||
+            isset($response['error'])
+        ) {
+            throw new RuntimeException(
+                'Invalid or rejected WebSocket handshake response.'
+            );
+        }
+
+        return $response;
+    }
     private function receive(): ?string
     {
 //        $frame = $this->client->recv(30);

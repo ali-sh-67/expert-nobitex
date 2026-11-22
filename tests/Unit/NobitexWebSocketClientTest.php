@@ -437,6 +437,62 @@ class NobitexWebSocketClientTest extends TestCase
             $this->subscriptionManager->getRecoveryPosition(self::CHANNEL)
         );
     }
+
+    public function test_it_accepts_valid_handshake_response(): void
+    {
+        $response = json_encode([
+            'id' => 1,
+            'connect' => [
+                'client' => 'test-client-id',
+                'version' => '6.9.3 OSS',
+                'ping' => 25,
+                'pong' => true,
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $method = new ReflectionMethod(
+            NobitexWebSocketClient::class,
+            'validateHandshakeResponse'
+        );
+
+        $result = $method->invoke($this->client, $response);
+
+        $this->assertSame(1, $result['id']);
+        $this->assertSame('test-client-id', $result['connect']['client']);
+    }
+
+    public function test_it_rejects_invalid_handshake_json(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Invalid WebSocket handshake JSON response.');
+
+        $method = new ReflectionMethod(
+            NobitexWebSocketClient::class,
+            'validateHandshakeResponse'
+        );
+
+        $method->invoke($this->client, '{invalid-json');
+    }
+
+    public function test_it_rejects_handshake_with_wrong_request_id(): void
+    {
+        $response = json_encode([
+            'id' => 2,
+            'connect' => [
+                'client' => 'test-client-id',
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $this->expectException(RuntimeException::class);
+
+        $method = new ReflectionMethod(
+            NobitexWebSocketClient::class,
+            'validateHandshakeResponse'
+        );
+
+        $method->invoke($this->client, $response);
+    }
+
     private function prepareSuspendedMarket(): void
     {
         $this->marketDataManager->registerMarket('BTCIRT');
