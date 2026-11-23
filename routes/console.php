@@ -7,4 +7,7 @@ use Illuminate\Support\Facades\Schedule;
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
 Schedule::command('nobitex:fetch-prices')->everyMinute();
+
+Schedule::command('nobitex:smp')->dailyAt('03:00:00');
