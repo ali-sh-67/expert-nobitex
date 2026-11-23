@@ -11,9 +11,7 @@ readonly class MarketMetrics
         public ?string $spread,
         public ?string $spreadPercentage,
         public ?string $imbalance,
-    )
-    {
-    }
+    ) {}
 
     public static function fromSnapshot(OrderBookSnapshot $snapshot): self
     {
@@ -39,11 +37,11 @@ readonly class MarketMetrics
             $bidDepth = BigDecimal::of($snapshot->bidDepth);
             $askDepth = BigDecimal::of($snapshot->askDepth);
             $totalDepth = $bidDepth->plus($askDepth);
-            if (!$totalDepth->isZero()) {
+            if (! $totalDepth->isZero()) {
                 $imbalance = $bidDepth->minus($askDepth)->dividedBy($totalDepth, 10, RoundingMode::HalfUp)->toScale(6, RoundingMode::HalfUp)->__toString();
             }
         }
 
-        return new self(spread: $spread, spreadPercentage: $spreadPercentage, imbalance: $imbalance,);
+        return new self(spread: $spread, spreadPercentage: $spreadPercentage, imbalance: $imbalance);
     }
 }

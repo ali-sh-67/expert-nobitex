@@ -2,10 +2,10 @@
 
 namespace App\Services\Nobitex;
 
+use App\Enums\OrderBookMode;
 use Brick\Math\BigDecimal;
 use Brick\Math\Exception\MathException;
 use Illuminate\Support\Facades\Log;
-use App\Enums\OrderBookMode;
 use Throwable;
 use UnexpectedValueException;
 
@@ -48,25 +48,25 @@ class OrderBookHandler
     }
 
     public function handle(array $data): bool
-{
-    $mode = OrderBookMode::tryFrom(
-        config('nobitex.orderbook_mode', 'snapshot')
-    );
+    {
+        $mode = OrderBookMode::tryFrom(
+            config('nobitex.orderbook_mode', 'snapshot')
+        );
 
-    return match ($mode) {
-        OrderBookMode::SNAPSHOT => $this->applySnapshot($data, true),
+        return match ($mode) {
+            OrderBookMode::SNAPSHOT => $this->applySnapshot($data, true),
 
-        OrderBookMode::DELTA => throw new \LogicException(
-            'Delta mode is not implemented yet.'
-        ),
+            OrderBookMode::DELTA => throw new \LogicException(
+                'Delta mode is not implemented yet.'
+            ),
 
-        null => throw new \UnexpectedValueException(
-            'Invalid orderbook mode configuration.'
-        ),
-    };
-}
-  
-    public function applySnapshot(array $data, bool $rejectOlder=true): bool
+            null => throw new UnexpectedValueException(
+                'Invalid orderbook mode configuration.'
+            ),
+        };
+    }
+
+    public function applySnapshot(array $data, bool $rejectOlder = true): bool
     {
         // پیام قدیمی‌تر از وضعیت فعلی است؛ آن را اعمال نمی‌کنیم،
         // اما چون آگاهانه پردازش و کنار گذاشته شده، قابل ثبت است.
@@ -84,9 +84,9 @@ class OrderBookHandler
         }
 
         if (
-            !isset($data['bids'], $data['asks']) ||
-            !is_array($data['bids']) ||
-            !is_array($data['asks'])
+            ! isset($data['bids'], $data['asks']) ||
+            ! is_array($data['bids']) ||
+            ! is_array($data['asks'])
         ) {
             $this->invalidate('Missing or invalid bids/asks arrays.');
 
@@ -140,11 +140,12 @@ class OrderBookHandler
 
     /**
      * @return array<int, array{0: string, 1: string}>
+     *
      * @throws MathException
      */
     private function normalizeLevels(array $levels): array
     {
-        if ($levels === [] || !array_is_list($levels)) {
+        if ($levels === [] || ! array_is_list($levels)) {
             throw new UnexpectedValueException(
                 'Order book levels must be a non-empty list.'
             );
@@ -154,29 +155,29 @@ class OrderBookHandler
 
         foreach ($levels as $index => $level) {
             if (
-                !is_array($level) ||
-                !array_key_exists(0, $level) ||
-                !array_key_exists(1, $level) ||
-                !is_scalar($level[0]) ||
-                !is_scalar($level[1])
+                ! is_array($level) ||
+                ! array_key_exists(0, $level) ||
+                ! array_key_exists(1, $level) ||
+                ! is_scalar($level[0]) ||
+                ! is_scalar($level[1])
             ) {
                 throw new UnexpectedValueException(
                     "Malformed order book level at index $index."
                 );
             }
 
-            $price = (string)$level[0];
-            $quantity = (string)$level[1];
+            $price = (string) $level[0];
+            $quantity = (string) $level[1];
 
             try {
                 $priceDecimal = BigDecimal::of($price);
                 $quantityDecimal = BigDecimal::of($quantity);
 
-              if (!$quantityDecimal->isGreaterThan(BigDecimal::zero())) {
-    throw new UnexpectedValueException(
-        "Quantity must be positive at level $index."
-    );
-}
+                if (! $quantityDecimal->isGreaterThan(BigDecimal::zero())) {
+                    throw new UnexpectedValueException(
+                        "Quantity must be positive at level $index."
+                    );
+                }
             } catch (Throwable $e) {
                 throw new UnexpectedValueException(
                     "Non-numeric price or quantity at level $index.",
@@ -184,7 +185,7 @@ class OrderBookHandler
                 );
             }
 
-            if (!$priceDecimal->isGreaterThan(BigDecimal::zero())) {
+            if (! $priceDecimal->isGreaterThan(BigDecimal::zero())) {
                 throw new UnexpectedValueException(
                     "Price must be positive at level $index."
                 );
@@ -212,14 +213,13 @@ class OrderBookHandler
                 ? $previous->isGreaterThan($current)
                 : $previous->isLessThan($current);
 
-            if (!$validOrder) {
+            if (! $validOrder) {
                 throw new UnexpectedValueException(
                     "Invalid price order in $side at level $i."
                 );
             }
         }
     }
-
 
     private function invalidate(string $reason): void
     {
@@ -256,23 +256,23 @@ class OrderBookHandler
 
     public function getBidDepth(int $levels): ?string
     {
-        if (!$this->valid) {
+        if (! $this->valid) {
             return null;
         }
 
         return max(0, $levels)
-                |> (fn($x) => array_slice($this->bids, 0, $x))
+                |> (fn ($x) => array_slice($this->bids, 0, $x))
                 |> $this->calculateDepth(...);
     }
 
     public function getAskDepth(int $levels): ?string
     {
-        if (!$this->valid) {
+        if (! $this->valid) {
             return null;
         }
 
         return max(0, $levels)
-                |> (fn($x) => array_slice($this->asks, 0, $x))
+                |> (fn ($x) => array_slice($this->asks, 0, $x))
                 |> $this->calculateDepth(...);
     }
 
@@ -318,7 +318,7 @@ class OrderBookHandler
 
     public function isFresh(int $maxAgeMs): bool
     {
-        if (!$this->valid || $this->lastReceivedAt === null || $maxAgeMs < 0) {
+        if (! $this->valid || $this->lastReceivedAt === null || $maxAgeMs < 0) {
             return false;
         }
 
@@ -329,7 +329,7 @@ class OrderBookHandler
 
     public function getDataAgeMs(): ?float
     {
-        if (!$this->valid || $this->lastReceivedAt === null) {
+        if (! $this->valid || $this->lastReceivedAt === null) {
             return null;
         }
 
@@ -342,7 +342,7 @@ class OrderBookHandler
      */
     public function suspendConnection(): void
     {
-        if (!$this->valid) {
+        if (! $this->valid) {
             return;
         }
 

@@ -15,7 +15,7 @@ class OrderBookHandlerTest extends TestCase
     #[Test]
     public function it_accepts_a_valid_order_book(): void
     {
-        $handler = new OrderBookHandler();
+        $handler = new OrderBookHandler;
 
         $handler->initialize([
             'bids' => [
@@ -40,7 +40,7 @@ class OrderBookHandlerTest extends TestCase
     #[Test]
     public function it_rejects_bids_with_invalid_price_order(): void
     {
-        $handler = new OrderBookHandler();
+        $handler = new OrderBookHandler;
 
         $handler->initialize([
             'bids' => [
@@ -65,7 +65,7 @@ class OrderBookHandlerTest extends TestCase
     #[Test]
     public function it_rejects_asks_with_invalid_price_order(): void
     {
-        $handler = new OrderBookHandler();
+        $handler = new OrderBookHandler;
 
         $handler->initialize([
             'bids' => [
@@ -84,7 +84,7 @@ class OrderBookHandlerTest extends TestCase
     #[Test]
     public function it_rejects_a_locked_or_crossed_order_book(): void
     {
-        $handler = new OrderBookHandler();
+        $handler = new OrderBookHandler;
 
         $handler->initialize([
             'bids' => [
@@ -105,7 +105,7 @@ class OrderBookHandlerTest extends TestCase
     #[Test]
     public function it_rejects_missing_order_book_sides(): void
     {
-        $handler = new OrderBookHandler();
+        $handler = new OrderBookHandler;
 
         $handler->initialize([
             'bids' => [
@@ -121,7 +121,7 @@ class OrderBookHandlerTest extends TestCase
     #[Test]
     public function it_calculates_depth_for_valid_order_book(): void
     {
-        $handler = new OrderBookHandler();
+        $handler = new OrderBookHandler;
 
         $handler->initialize([
             'bids' => [
@@ -143,7 +143,7 @@ class OrderBookHandlerTest extends TestCase
     #[Test]
     public function it_calculates_market_metrics_for_valid_snapshot(): void
     {
-        $handler = new OrderBookHandler();
+        $handler = new OrderBookHandler;
 
         $handler->initialize([
             'bids' => [
@@ -167,7 +167,7 @@ class OrderBookHandlerTest extends TestCase
     #[Test]
     public function it_returns_null_metrics_for_invalid_order_book(): void
     {
-        $handler = new OrderBookHandler();
+        $handler = new OrderBookHandler;
 
         $handler->initialize([
             'bids' => [
@@ -191,7 +191,7 @@ class OrderBookHandlerTest extends TestCase
     #[Test]
     public function strategy_returns_hold_for_invalid_order_book(): void
     {
-        $handler = new OrderBookHandler();
+        $handler = new OrderBookHandler;
 
         $handler->initialize([
             'bids' => [
@@ -205,7 +205,7 @@ class OrderBookHandlerTest extends TestCase
         ]);
         $snapshot = $handler->snapshot();
 
-        $strategy = new SimpleStrategy();
+        $strategy = new SimpleStrategy;
 
         $context = new MarketContext(
             $snapshot,
@@ -214,15 +214,13 @@ class OrderBookHandlerTest extends TestCase
 
         $result = $strategy->analyze($context);
 
-
         $this->assertSame(Signal::HOLD, $result->signal);
     }
-
 
     #[Test]
     public function it_invalidates_order_book_after_connection_loss(): void
     {
-        $handler = new OrderBookHandler();
+        $handler = new OrderBookHandler;
 
         $handler->initialize([
             'bids' => [
@@ -258,7 +256,7 @@ class OrderBookHandlerTest extends TestCase
     #[Test]
     public function it_recovers_when_a_valid_order_book_arrives_after_invalidation(): void
     {
-        $handler = new OrderBookHandler();
+        $handler = new OrderBookHandler;
 
         $handler->initialize([
             'bids' => [
@@ -307,7 +305,7 @@ class OrderBookHandlerTest extends TestCase
     #[Test]
     public function it_ignores_stale_order_book_updates(): void
     {
-        $handler = new OrderBookHandler();
+        $handler = new OrderBookHandler;
 
         $handler->initialize([
             'bids' => [['100', '2']],
@@ -326,11 +324,10 @@ class OrderBookHandlerTest extends TestCase
         $this->assertSame('102', $handler->getBestAskPrice());
     }
 
-
     #[Test]
     public function it_rejects_stale_update_after_connection_invalidation(): void
     {
-        $handler = new OrderBookHandler();
+        $handler = new OrderBookHandler;
 
         $handler->initialize([
             'bids' => [['100', '2']],
@@ -353,7 +350,7 @@ class OrderBookHandlerTest extends TestCase
     #[Test]
     public function it_considers_a_new_order_book_fresh(): void
     {
-        $handler = new OrderBookHandler();
+        $handler = new OrderBookHandler;
 
         $handler->initialize([
             'bids' => [['100', '2']],
@@ -368,7 +365,7 @@ class OrderBookHandlerTest extends TestCase
     #[Test]
     public function it_considers_an_expired_order_book_stale(): void
     {
-        $handler = new OrderBookHandler();
+        $handler = new OrderBookHandler;
 
         $handler->initialize([
             'bids' => [['100', '2']],
@@ -384,7 +381,7 @@ class OrderBookHandlerTest extends TestCase
     #[Test]
     public function it_does_not_consider_invalid_order_book_fresh(): void
     {
-        $handler = new OrderBookHandler();
+        $handler = new OrderBookHandler;
 
         $handler->initialize([
             'bids' => [['100', '2']],
@@ -397,6 +394,4 @@ class OrderBookHandlerTest extends TestCase
         $this->assertFalse($handler->isFresh(1000));
         $this->assertNull($handler->getDataAgeMs());
     }
-
-
 }

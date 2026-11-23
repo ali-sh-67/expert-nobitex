@@ -1,7 +1,10 @@
 <?php
 
+use Swoole\Coroutine\Http\Client;
+use Swoole\WebSocket\Frame;
+
 Co\run(function () {
-    $client = new Swoole\Coroutine\Http\Client(
+    $client = new Client(
         'ws.nobitex.ir',
         443,
         true
@@ -15,9 +18,10 @@ Co\run(function () {
 
     echo "Connecting...\n";
 
-    if (!$client->upgrade('/connection/websocket')) {
+    if (! $client->upgrade('/connection/websocket')) {
         echo "Upgrade failed\n";
         echo "Error: {$client->errCode} - {$client->errMsg}\n";
+
         return;
     }
 
@@ -25,15 +29,16 @@ Co\run(function () {
 
     // 1. Connect
     $message = json_encode([
-        'connect' => (object)[],
+        'connect' => (object) [],
         'id' => 1,
     ]);
 
     echo "Sending connect...\n";
 
-    if (!$client->push($message)) {
+    if (! $client->push($message)) {
         echo "Connect push failed\n";
         echo "Error: {$client->errCode} - {$client->errMsg}\n";
+
         return;
     }
 
@@ -44,11 +49,12 @@ Co\run(function () {
     if ($frame === false) {
         echo "Connect response failed\n";
         echo "Error: {$client->errCode} - {$client->errMsg}\n";
+
         return;
     }
 
     echo "Connect response:\n";
-    echo $frame->data . PHP_EOL;
+    echo $frame->data.PHP_EOL;
 
     // 2. Subscribe
     $subscribeMessage = json_encode([
@@ -60,9 +66,10 @@ Co\run(function () {
 
     echo "Sending subscribe...\n";
 
-    if (!$client->push($subscribeMessage)) {
+    if (! $client->push($subscribeMessage)) {
         echo "Subscribe push failed\n";
         echo "Error: {$client->errCode} - {$client->errMsg}\n";
+
         return;
     }
 
@@ -73,6 +80,7 @@ Co\run(function () {
     if ($frame === false) {
         echo "Subscribe response failed\n";
         echo "Error: {$client->errCode} - {$client->errMsg}\n";
+
         return;
     }
 
@@ -89,14 +97,15 @@ Co\run(function () {
         }
 
         // در Swoole باید Frame را بررسی کنیم
-        if ($frame instanceof Swoole\WebSocket\Frame) {
+        if ($frame instanceof Frame) {
             $raw = $frame->data;
         } elseif (is_string($frame)) {
             // برای سازگاری با خروجی احتمالی نسخه فعلی
             $raw = $frame;
         } else {
-            echo "Unknown frame type: ";
+            echo 'Unknown frame type: ';
             var_dump($frame);
+
             continue;
         }
 
@@ -106,6 +115,7 @@ Co\run(function () {
 
         if (json_last_error() !== JSON_ERROR_NONE) {
             echo "Invalid JSON\n";
+
             continue;
         }
 
@@ -117,13 +127,14 @@ Co\run(function () {
         if ($message === []) {
             echo "Ping received -> sending pong\n";
 
-            if (!$client->push('{}')) {
+            if (! $client->push('{}')) {
                 echo "Pong failed\n";
                 echo "Error: {$client->errCode} - {$client->errMsg}\n";
                 break;
             }
 
             echo "Pong sent\n";
+
             continue;
         }
 
@@ -134,22 +145,22 @@ Co\run(function () {
             $data = $message['push']['pub']['data'];
 
             echo "OrderBook update\n";
-            echo "Last price: " . ($data['lastTradePrice'] ?? 'N/A') . PHP_EOL;
+            echo 'Last price: '.($data['lastTradePrice'] ?? 'N/A').PHP_EOL;
 
-            if (!empty($data['bids'])) {
-                echo "Best bid: "
-                    . $data['bids'][0][0]
-                    . " / "
-                    . $data['bids'][0][1]
-                    . PHP_EOL;
+            if (! empty($data['bids'])) {
+                echo 'Best bid: '
+                    .$data['bids'][0][0]
+                    .' / '
+                    .$data['bids'][0][1]
+                    .PHP_EOL;
             }
 
-            if (!empty($data['asks'])) {
-                echo "Best ask: "
-                    . $data['asks'][0][0]
-                    . " / "
-                    . $data['asks'][0][1]
-                    . PHP_EOL;
+            if (! empty($data['asks'])) {
+                echo 'Best ask: '
+                    .$data['asks'][0][0]
+                    .' / '
+                    .$data['asks'][0][1]
+                    .PHP_EOL;
             }
 
             continue;

@@ -5,12 +5,12 @@ namespace App\Services\Nobitex;
 class StrategyAggregator
 {
     public const string MODE_SINGLE = 'single';
+
     public const string MODE_CONSENSUS = 'consensus';
 
     public function __construct(
         private readonly StrategyRegistry $registry,
-    ) {
-    }
+    ) {}
 
     public function evaluate(
         MarketContext $context,
@@ -23,7 +23,7 @@ class StrategyAggregator
             return $this->hold('no_strategies_selected');
         }
 
-        if (!in_array($mode, [
+        if (! in_array($mode, [
             self::MODE_SINGLE,
             self::MODE_CONSENSUS,
         ], true)) {
@@ -82,7 +82,7 @@ class StrategyAggregator
         return new StrategyResult(
             $signal,
             $confidence,
-            'strategy_consensus_' . strtolower($signal->value),
+            'strategy_consensus_'.strtolower($signal->value),
             ['strategies' => $this->summarize($results)]
         );
     }

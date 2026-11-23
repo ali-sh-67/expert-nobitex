@@ -1,6 +1,9 @@
 <?php
 
+use App\Providers\AppServiceProvider;
+use App\Providers\NobitexServiceProvider;
+
 return [
-    App\Providers\AppServiceProvider::class,
-    App\Providers\NobitexServiceProvider::class,
+    AppServiceProvider::class,
+    NobitexServiceProvider::class,
 ];

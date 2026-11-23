@@ -2,7 +2,6 @@
 
 namespace Tests\Unit;
 
-use App\Enums\OrderBookMode;
 use App\Services\Nobitex\MarketDataManager;
 use App\Services\Nobitex\MarketDataMessageRouter;
 use App\Services\Nobitex\NobitexWebSocketClient;
@@ -15,8 +14,11 @@ class NobitexWebSocketSnapshotTest extends TestCase
     private const CHANNEL = 'orderbook-BTCIRT';
 
     private MarketDataManager $marketDataManager;
+
     private MarketDataMessageRouter $router;
+
     private SubscriptionManager $subscriptionManager;
+
     private TestableSnapshotWebSocketClient $client;
 
     protected function setUp(): void
@@ -25,11 +27,11 @@ class NobitexWebSocketSnapshotTest extends TestCase
 
         config(['nobitex.orderbook_mode' => 'snapshot']);
 
-        $this->marketDataManager = new MarketDataManager();
+        $this->marketDataManager = new MarketDataManager;
         $this->router = new MarketDataMessageRouter(
             $this->marketDataManager
         );
-        $this->subscriptionManager = new SubscriptionManager();
+        $this->subscriptionManager = new SubscriptionManager;
 
         $this->marketDataManager->registerMarket('BTCIRT');
 
@@ -217,10 +219,11 @@ class NobitexWebSocketSnapshotTest extends TestCase
         $this->assertSame('110', $handler->getBestBidPrice());
         $this->assertSame('111', $handler->getBestAskPrice());
     }
+
     #[Test]
     public function it_does_not_request_recovery_in_snapshot_mode(): void
     {
-        $channel = 'public:' . self::CHANNEL;
+        $channel = 'public:'.self::CHANNEL;
 
         // وجود اطلاعات Recovery قبلی را شبیه‌سازی می‌کنیم.
         $this->subscriptionManager->register(
@@ -240,6 +243,7 @@ class NobitexWebSocketSnapshotTest extends TestCase
             $this->client->sentPayloads[0]['subscribe']
         );
     }
+
     private function setPendingSubscription(int $requestId): void
     {
         $property = new \ReflectionProperty(
@@ -249,7 +253,7 @@ class NobitexWebSocketSnapshotTest extends TestCase
 
         $property->setValue($this->client, [
             $requestId => [
-                'channel' => 'public:' . self::CHANNEL,
+                'channel' => 'public:'.self::CHANNEL,
                 'recovery_requested' => false,
             ],
         ]);
@@ -266,6 +270,7 @@ class NobitexWebSocketSnapshotTest extends TestCase
 
         $method->invoke($this->client, $requestId, $response);
     }
+
     private function publish(array $data, ?int $offset = null): bool
     {
         $publication = ['data' => $data];
@@ -276,7 +281,7 @@ class NobitexWebSocketSnapshotTest extends TestCase
 
         return $this->invokeHandlePublication([
             'push' => [
-                'channel' => 'public:' . self::CHANNEL,
+                'channel' => 'public:'.self::CHANNEL,
                 'pub' => $publication,
             ],
         ]);
@@ -291,7 +296,6 @@ class NobitexWebSocketSnapshotTest extends TestCase
 
         return $method->invoke($this->client, $message);
     }
-
 
     private function snapshot(
         array $bids = [['100', '2'], ['99', '3']],

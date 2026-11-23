@@ -11,7 +11,7 @@ class MarketDataManagerTest extends TestCase
     #[Test]
     public function it_keeps_order_books_isolated_per_market(): void
     {
-        $manager = new MarketDataManager();
+        $manager = new MarketDataManager;
 
         $manager->registerMarkets(['BTCIRT', 'ETHIRT']);
 
@@ -39,7 +39,7 @@ class MarketDataManagerTest extends TestCase
     #[Test]
     public function it_reuses_existing_handler_for_same_market(): void
     {
-        $manager = new MarketDataManager();
+        $manager = new MarketDataManager;
 
         $first = $manager->registerMarket('BTCIRT');
         $second = $manager->registerMarket('btcirt');
@@ -52,7 +52,7 @@ class MarketDataManagerTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
 
-        $manager = new MarketDataManager();
+        $manager = new MarketDataManager;
 
         $manager->handle('BTCIRT', []);
     }
@@ -60,7 +60,7 @@ class MarketDataManagerTest extends TestCase
     #[Test]
     public function it_invalidates_all_registered_markets(): void
     {
-        $manager = new MarketDataManager();
+        $manager = new MarketDataManager;
 
         $manager->registerMarkets(['BTCIRT', 'ETHIRT']);
 
@@ -97,7 +97,7 @@ class MarketDataManagerTest extends TestCase
 
     public function test_it_preserves_orderbook_during_connection_suspension(): void
     {
-        $manager = new MarketDataManager();
+        $manager = new MarketDataManager;
 
         $manager->registerMarket('BTCIRT');
         $manager->initialize('BTCIRT', $this->snapshot());
@@ -124,7 +124,7 @@ class MarketDataManagerTest extends TestCase
 
     public function test_it_cannot_resume_market_without_existing_orderbook(): void
     {
-        $manager = new MarketDataManager();
+        $manager = new MarketDataManager;
 
         $handler = $manager->registerMarket('BTCIRT');
 

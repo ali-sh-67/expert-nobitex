@@ -6,9 +6,9 @@ use App\Services\Nobitex\MarketDataManager;
 use App\Services\Nobitex\MarketDataMessageRouter;
 use App\Services\Nobitex\NobitexWebSocketClient;
 use App\Services\Nobitex\SubscriptionManager;
-use Tests\TestCase;
 use ReflectionMethod;
 use RuntimeException;
+use Tests\TestCase;
 
 class NobitexWebSocketClientTest extends TestCase
 {
@@ -28,12 +28,12 @@ class NobitexWebSocketClientTest extends TestCase
 
         config(['nobitex.orderbook_mode' => 'delta']);
 
-        $this->subscriptionManager = new SubscriptionManager();
+        $this->subscriptionManager = new SubscriptionManager;
 
         $this->router = $this->createMock(
             MarketDataMessageRouter::class
         );
-        $this->marketDataManager = new MarketDataManager();
+        $this->marketDataManager = new MarketDataManager;
 
         $this->client = new TestableNobitexWebSocketClient(
             $this->marketDataManager,
@@ -129,7 +129,6 @@ class NobitexWebSocketClientTest extends TestCase
 
         $method->invoke($this->client, $message);
     }
-
 
     public function test_it_stores_position_from_initial_subscribe_reply(): void
     {
@@ -276,7 +275,7 @@ class NobitexWebSocketClientTest extends TestCase
         int $requestId,
         array $response
     ): void {
-        $method = new \ReflectionMethod(
+        $method = new ReflectionMethod(
             NobitexWebSocketClient::class,
             'handleSubscribeReply'
         );
@@ -356,7 +355,7 @@ class NobitexWebSocketClientTest extends TestCase
 
     private function invokeHandleResponse(string $message): void
     {
-        $method = new \ReflectionMethod(
+        $method = new ReflectionMethod(
             NobitexWebSocketClient::class,
             'handleResponse'
         );
@@ -402,6 +401,7 @@ class NobitexWebSocketClientTest extends TestCase
             ],
         ], $this->client->sentPayloads[0]);
     }
+
     public function test_it_resumes_orderbook_after_recovery_without_publications(): void
     {
         $this->prepareSuspendedMarket();
@@ -418,6 +418,7 @@ class NobitexWebSocketClientTest extends TestCase
         $this->assertSame('100', $handler->getBestBidPrice());
         $this->assertSame('101', $handler->getBestAskPrice());
     }
+
     public function test_it_keeps_orderbook_suspended_after_failed_recovery(): void
     {
         $this->prepareSuspendedMarket();
@@ -493,6 +494,102 @@ class NobitexWebSocketClientTest extends TestCase
         $method->invoke($this->client, $response);
     }
 
+    public function test_it_resets_attempts_after_stable_session(): void
+    {
+        $method = new ReflectionMethod(
+            NobitexWebSocketClient::class,
+            'shouldResetReconnectAttempts'
+        );
+
+        $this->assertTrue(
+            $method->invoke($this->client, 100.0, 160.0)
+        );
+
+        $this->assertFalse(
+            $method->invoke($this->client, 100.0, 159.9)
+        );
+
+        $this->assertFalse(
+            $method->invoke($this->client, null, 200.0)
+        );
+    }
+
+    public function test_it_rejects_invalid_publications_in_subscribe_reply(): void
+    {
+        $requestId = 40;
+
+        $this->setPendingSubscription(
+            $requestId,
+            self::CHANNEL,
+            false
+        );
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage(
+            'Invalid publications in Subscribe response'
+        );
+
+        $this->invokeSubscribeReply($requestId, [
+            'id' => $requestId,
+            'subscribe' => [
+                'publications' => 'invalid',
+            ],
+        ]);
+    }
+
+    public function test_it_continues_processing_after_malformed_json_frame(): void
+    {
+        $this->router
+            ->expects($this->once())
+            ->method('route')
+            ->willReturn(true);
+
+        $validMessage = json_encode([
+            'push' => [
+                'channel' => self::CHANNEL,
+                'pub' => [
+                    'offset' => 501,
+                    'data' => [],
+                ],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $this->invokeHandleResponse(
+            "{invalid-json}\n".$validMessage
+        );
+
+        $this->assertSame(
+            501,
+            $this->subscriptionManager->get(self::CHANNEL)['offset']
+        );
+    }
+
+    public function test_it_rejects_unregistered_market_channel(): void
+    {
+        $this->expectException(RuntimeException::class);
+
+        $this->expectExceptionMessage(
+            'Market not registered: BTCIRT'
+        );
+
+        $this->client->run([self::CHANNEL]);
+    }
+
+    public function test_it_calculates_reconnect_delay_correctly(): void
+    {
+        $method = new ReflectionMethod(
+            NobitexWebSocketClient::class,
+            'calculateReconnectDelay'
+        );
+
+        $this->assertSame(2, $method->invoke($this->client, 1));
+        $this->assertSame(4, $method->invoke($this->client, 2));
+        $this->assertSame(8, $method->invoke($this->client, 3));
+        $this->assertSame(16, $method->invoke($this->client, 4));
+        $this->assertSame(30, $method->invoke($this->client, 5));
+        $this->assertSame(30, $method->invoke($this->client, 10));
+    }
+
     private function prepareSuspendedMarket(): void
     {
         $this->marketDataManager->registerMarket('BTCIRT');
@@ -537,7 +634,6 @@ class NobitexWebSocketClientTest extends TestCase
             ],
         ]);
     }
-
 }
 
 class TestableNobitexWebSocketClient extends NobitexWebSocketClient

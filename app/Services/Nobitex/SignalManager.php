@@ -7,8 +7,7 @@ readonly class SignalManager
     public function __construct(
         private MarketDataManager $marketDataManager,
         private StrategyAggregator $aggregator,
-    ) {
-    }
+    ) {}
 
     public function evaluate(string $symbol): StrategyResult
     {
@@ -27,7 +26,7 @@ readonly class SignalManager
             1500
         );
 
-        if (!$handler->isFresh($maxAge)) {
+        if (! $handler->isFresh($maxAge)) {
             return new StrategyResult(
                 Signal::HOLD,
                 0.0,

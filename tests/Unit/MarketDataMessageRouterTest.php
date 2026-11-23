@@ -11,7 +11,7 @@ class MarketDataMessageRouterTest extends TestCase
 {
     private function makeRouter(): array
     {
-        $manager = new MarketDataManager();
+        $manager = new MarketDataManager;
 
         $manager->registerMarkets(['BTCIRT', 'ETHIRT']);
 

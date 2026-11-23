@@ -3,7 +3,6 @@
 namespace Database\Seeders;
 
 use App\Models\MarketPair;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class MarketPairSeeder extends Seeder

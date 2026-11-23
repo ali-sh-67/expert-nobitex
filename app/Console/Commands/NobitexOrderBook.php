@@ -11,6 +11,7 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Swoole\Coroutine;
+
 use function Swoole\Coroutine\go;
 use function Swoole\Coroutine\run;
 
@@ -75,7 +76,7 @@ class NobitexOrderBook extends Command
 
         foreach ($symbols as $symbol) {
             if ($mode === OrderBookMode::DELTA) {
-                if (!isset($orderBooks[$symbol])) {
+                if (! isset($orderBooks[$symbol])) {
                     throw new \RuntimeException(
                         "Initial order book not found: {$symbol}"
                     );

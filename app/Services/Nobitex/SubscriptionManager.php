@@ -33,7 +33,6 @@ class SubscriptionManager
     /**
      * به‌روزرسانی اطلاعات دریافتی از پاسخ Subscribe
      */
-
     public function updateSubscription(
         string $channel,
         ?string $epoch,
@@ -46,12 +45,12 @@ class SubscriptionManager
         $previous = $this->get($channel);
 
         // اولین Subscribe
-// Subscribe بدون درخواست Recovery
-        if (!$wasRecovering) {
+        // Subscribe بدون درخواست Recovery
+        if (! $wasRecovering) {
             // اگر موقعیت قبلی نامعتبر شده، تا زمان همگام‌سازی
             // مجدد نباید آن را معتبر اعلام کنیم.
             $keepUnpositioned = $previous !== null
-                && !$previous['positioned'];
+                && ! $previous['positioned'];
 
             $this->subscriptions[$channel] = [
                 'channel' => $channel,
@@ -99,7 +98,6 @@ class SubscriptionManager
         return false;
     }
 
-
     /**
      * دریافت وضعیت یک کانال
      */
@@ -116,10 +114,10 @@ class SubscriptionManager
         $subscription = $this->get($channel);
 
         if (
-            !$subscription ||
-            !$subscription['recoverable'] ||
-            !$subscription['positioned'] ||
-            !$subscription['epoch']
+            ! $subscription ||
+            ! $subscription['recoverable'] ||
+            ! $subscription['positioned'] ||
+            ! $subscription['epoch']
         ) {
             return null;
         }
@@ -135,7 +133,7 @@ class SubscriptionManager
      */
     public function updateOffset(string $channel, int $offset): bool
     {
-        if (!isset($this->subscriptions[$channel])) {
+        if (! isset($this->subscriptions[$channel])) {
             return false;
         }
 
@@ -153,7 +151,7 @@ class SubscriptionManager
      */
     public function invalidate(string $channel): void
     {
-        if (!isset($this->subscriptions[$channel])) {
+        if (! isset($this->subscriptions[$channel])) {
             return;
         }
 

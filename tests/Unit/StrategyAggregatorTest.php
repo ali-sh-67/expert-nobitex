@@ -19,14 +19,8 @@ class StrategyAggregatorTest extends TestCase
         Signal $signal,
         float $confidence = 0.8,
     ): StrategyInterface {
-        return new class(
-            $key,
-            new StrategyResult(
-                $signal,
-                $confidence,
-                'test_reason',
-            )
-        ) implements StrategyInterface {
+        return new class($key, new StrategyResult($signal, $confidence, 'test_reason')) implements StrategyInterface
+        {
             public function __construct(
                 private string $strategyKey,
                 private StrategyResult $result,

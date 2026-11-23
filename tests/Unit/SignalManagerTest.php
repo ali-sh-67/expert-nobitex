@@ -16,14 +16,14 @@ class SignalManagerTest extends TestCase
     #[Test]
     public function it_returns_hold_for_invalid_order_book(): void
     {
-        $marketDataManager = new MarketDataManager();
+        $marketDataManager = new MarketDataManager;
         $marketDataManager->registerMarket('BTCIRT');
 
         $manager = new SignalManager(
             $marketDataManager,
             new StrategyAggregator(
                 new StrategyRegistry([
-                    new SimpleStrategy(),
+                    new SimpleStrategy,
                 ])
             )
         );
@@ -37,7 +37,7 @@ class SignalManagerTest extends TestCase
     #[Test]
     public function it_evaluates_a_fresh_order_book(): void
     {
-        $marketDataManager = new MarketDataManager();
+        $marketDataManager = new MarketDataManager;
 
         $handler = $marketDataManager->registerMarket('BTCIRT');
 
@@ -52,7 +52,7 @@ class SignalManagerTest extends TestCase
             $marketDataManager,
             new StrategyAggregator(
                 new StrategyRegistry([
-                    new SimpleStrategy(),
+                    new SimpleStrategy,
                 ])
             )
         );

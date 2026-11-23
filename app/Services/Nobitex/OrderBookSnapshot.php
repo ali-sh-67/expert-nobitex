@@ -12,8 +12,6 @@ readonly class OrderBookSnapshot
         public ?string $bestAskQuantity,
         public ?string $bidDepth,
         public ?string $askDepth,
-        public ?int    $lastUpdate,
-    )
-    {
-    }
+        public ?int $lastUpdate,
+    ) {}
 }

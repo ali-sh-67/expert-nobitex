@@ -13,7 +13,7 @@ class StrategyRegistryTest extends TestCase
     #[Test]
     public function it_registers_and_retrieves_a_strategy(): void
     {
-        $strategy = new SimpleStrategy();
+        $strategy = new SimpleStrategy;
 
         $registry = new StrategyRegistry([$strategy]);
 
@@ -27,7 +27,7 @@ class StrategyRegistryTest extends TestCase
     public function it_returns_null_for_unknown_strategy(): void
     {
         $registry = new StrategyRegistry([
-            new SimpleStrategy(),
+            new SimpleStrategy,
         ]);
 
         $this->assertNull(
@@ -39,7 +39,7 @@ class StrategyRegistryTest extends TestCase
     public function it_returns_all_registered_strategies(): void
     {
         $registry = new StrategyRegistry([
-            new SimpleStrategy(),
+            new SimpleStrategy,
         ]);
 
         $this->assertCount(1, $registry->all());
@@ -51,8 +51,8 @@ class StrategyRegistryTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
 
         new StrategyRegistry([
-            new SimpleStrategy(),
-            new SimpleStrategy(),
+            new SimpleStrategy,
+            new SimpleStrategy,
         ]);
     }
 }

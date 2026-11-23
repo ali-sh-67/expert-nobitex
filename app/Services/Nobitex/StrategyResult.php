@@ -13,7 +13,7 @@ readonly class StrategyResult
         public array $metadata = [],
     ) {
         if (
-            !is_finite($confidence) ||
+            ! is_finite($confidence) ||
             $confidence < 0 ||
             $confidence > 1
         ) {

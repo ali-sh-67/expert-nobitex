@@ -7,6 +7,7 @@ use Brick\Math\BigDecimal;
 class SimpleStrategy implements StrategyInterface
 {
     private const string IMBALANCE_THRESHOLD = '0.20';
+
     private const string MAX_SPREAD_PERCENTAGE = '0.10';
 
     public function key(): string
@@ -66,7 +67,7 @@ class SimpleStrategy implements StrategyInterface
 
         if (
             $imbalance->isLessThan(
-                BigDecimal::of('-' . self::IMBALANCE_THRESHOLD)
+                BigDecimal::of('-'.self::IMBALANCE_THRESHOLD)
             )
         ) {
             return new StrategyResult(

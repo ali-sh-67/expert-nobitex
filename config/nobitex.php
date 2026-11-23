@@ -1,9 +1,8 @@
 <?php
 
-
 return [
     'market' => [
-        'max_order_book_age_ms' => (int)env(
+        'max_order_book_age_ms' => (int) env(
             'NOBITEX_MAX_ORDER_BOOK_AGE_MS',
             1500
         ),
@@ -33,7 +32,7 @@ return [
             )
         )),
     ],
-  /*
+    /*
     |--------------------------------------------------------------------------
     | Order Book Processing Mode
     |--------------------------------------------------------------------------

@@ -6,22 +6,21 @@ class MarketDataMessageRouter
 {
     public function __construct(
         private MarketDataManager $marketDataManager,
-    ) {
-    }
+    ) {}
 
     public function route(array $message): bool
     {
         $push = $message['push'] ?? null;
 
-        if (!is_array($push)) {
+        if (! is_array($push)) {
             return false;
         }
 
         $channel = $push['channel'] ?? null;
 
         if (
-            !is_string($channel) ||
-            !preg_match(
+            ! is_string($channel) ||
+            ! preg_match(
                 '/^public:orderbook-([A-Z0-9]+)$/',
                 $channel,
                 $matches
@@ -34,7 +33,7 @@ class MarketDataMessageRouter
 
         $publication = $push['pub'] ?? null;
 
-        if (!is_array($publication)) {
+        if (! is_array($publication)) {
             return false;
         }
 
@@ -55,7 +54,7 @@ class MarketDataMessageRouter
             $data = $rawData;
         }
 
-        if (!is_array($data)) {
+        if (! is_array($data)) {
             return false;
         }
 

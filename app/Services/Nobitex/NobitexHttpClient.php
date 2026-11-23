@@ -2,9 +2,11 @@
 
 namespace App\Services\Nobitex;
 
-use Swoole\Coroutine\Http\Client;
 use Swoole\Coroutine;
+use Swoole\Coroutine\Http\Client;
+
 use function Swoole\Coroutine\run;
+
 class NobitexHttpClient
 {
     private string $baseUrl = 'apiv2.nobitex.ir';
@@ -19,7 +21,7 @@ class NobitexHttpClient
                 $result = $this->getOrderBook($symbol);
             });
 
-            if (!is_array($result)) {
+            if (! is_array($result)) {
                 throw new \RuntimeException(
                     'Failed to fetch order book inside coroutine.'
                 );
@@ -58,7 +60,7 @@ class NobitexHttpClient
                 JSON_THROW_ON_ERROR
             );
 
-            if (!is_array($data) || ($data['status'] ?? null) !== 'ok') {
+            if (! is_array($data) || ($data['status'] ?? null) !== 'ok') {
                 throw new \RuntimeException(
                     'Invalid Nobitex orderbook response.'
                 );

@@ -2,57 +2,89 @@
 
 namespace App\Services\Nobitex;
 
+use App\Enums\OrderBookMode;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Http\Client;
 use Swoole\WebSocket\Frame;
-use App\Enums\OrderBookMode;
-use UnexpectedValueException;
 use Throwable;
+use UnexpectedValueException;
 
 class NobitexWebSocketClient
 {
     private ?Client $client = null;
+
     private string $host = 'ws.nobitex.ir';
+
     private string $path = '/connection/websocket';
+
     private int $port = 443;
+
     private int $requestId = 2;
 
     private array $pendingSubscriptions = [];
 
-
     public function __construct(
-        private readonly MarketDataManager       $marketDataManager,
+        private readonly MarketDataManager $marketDataManager,
         private readonly MarketDataMessageRouter $messageRouter,
-        private readonly SubscriptionManager     $subscriptionManager,
-    )
+        private readonly SubscriptionManager $subscriptionManager,
+    ) {}
+
+    protected function shouldResetReconnectAttempts(
+        ?float $sessionStartedAt,
+        float $now
+    ): bool {
+        return $sessionStartedAt !== null
+            && ($now - $sessionStartedAt) >= 60;
+    }
+
+    protected function calculateReconnectDelay(int $attempt): int
     {
+        return min(30, 2 ** min($attempt, 5));
     }
 
     public function run(array $channels): void
     {
-        $symbols = [];
+        if (empty($channels)) {
+            throw new RuntimeException(
+                'No valid market channels provided.'
+            );
+        }
+
+        $validatedChannels = [];
 
         foreach ($channels as $channel) {
-            if (preg_match('/^public:orderbook-([A-Z0-9]+)$/', $channel, $matches)) {
-                $symbols[] = $matches[1];
+            if (
+                ! is_string($channel) ||
+                preg_match(
+                    '/^public:orderbook-([A-Z0-9]+)$/D',
+                    $channel,
+                    $matches
+                ) !== 1
+            ) {
+                throw new RuntimeException(
+                    'Invalid market channel provided.'
+                );
             }
+
+            $symbol = $matches[1];
+
+            if ($this->marketDataManager->getHandler($symbol) === null) {
+                throw new RuntimeException(
+                    "Market not registered: {$symbol}"
+                );
+            }
+
+            $validatedChannels[$channel] = $channel;
         }
 
-        $symbols = array_values(array_unique($symbols));
-
-        if (empty($symbols)) {
-            throw new RuntimeException('No valid market channels provided.');
-        }
-
-        $this->marketDataManager->registerMarkets($symbols);
-
+        $channels = array_values($validatedChannels);
 
         $attempt = 0;
 
         while (true) {
-
+            $sessionStartedAt = null;
             try {
 
                 echo "Connecting...\n";
@@ -67,7 +99,7 @@ class NobitexWebSocketClient
                     $this->subscribe($channel);
                     echo "Subscribed: {$channel}\n";
                 }
-
+                $sessionStartedAt = microtime(true);
                 echo "Listening...\n";
 
                 $this->listen();
@@ -82,6 +114,13 @@ class NobitexWebSocketClient
 
                 echo "Error: {$e->getMessage()}\n";
             }
+            // تشخیص پایداری
+            if ($this->shouldResetReconnectAttempts(
+                $sessionStartedAt,
+                microtime(true)
+            )) {
+                $attempt = 0;
+            }
 
             $this->marketDataManager->suspendAll();
 
@@ -89,10 +128,7 @@ class NobitexWebSocketClient
 
             $attempt++;
 
-            $delay = min(
-                30,
-                2 ** min($attempt, 5)
-            );
+            $delay = $this->calculateReconnectDelay($attempt);
 
             echo "Reconnecting in $delay seconds...\n";
 
@@ -114,17 +150,23 @@ class NobitexWebSocketClient
             'websocket_compression' => false,
         ]);
 
-        if (!$this->client->upgrade($this->path)) {
+        if (! $this->client->upgrade($this->path)) {
             throw new RuntimeException(
                 "WebSocket upgrade failed: {$this->client->errCode} - {$this->client->errMsg}"
             );
         }
 
-        $payload = ['connect' => (object)[], 'id' => 1];
+        $payload = ['connect' => (object) [], 'id' => 1];
 
         $this->send($payload);
 
         $frame = $this->receive();
+
+        if ($frame === false || $frame === null) {
+            throw new RuntimeException(
+                'WebSocket handshake response was not received.'
+            );
+        }
 
         $response = $this->validateHandshakeResponse($frame);
 
@@ -132,6 +174,7 @@ class NobitexWebSocketClient
             'response' => $response,
         ]);
     }
+
     protected function validateHandshakeResponse(string $frame): array
     {
         try {
@@ -150,10 +193,10 @@ class NobitexWebSocketClient
         }
 
         if (
-            !is_array($response) ||
+            ! is_array($response) ||
             ($response['id'] ?? null) !== 1 ||
-            !is_array($response['connect'] ?? null) ||
-            !is_string($response['connect']['client'] ?? null) ||
+            ! is_array($response['connect'] ?? null) ||
+            ! is_string($response['connect']['client'] ?? null) ||
             $response['connect']['client'] === '' ||
             isset($response['error'])
         ) {
@@ -164,47 +207,30 @@ class NobitexWebSocketClient
 
         return $response;
     }
-    private function receive(): ?string
-    {
-//        $frame = $this->client->recv(30);
-        $startedAt = microtime(true);
-        $frame = $this->client->recv(30);
-        $elapsed = round(microtime(true) - $startedAt, 3);
 
-        if ($frame === false) {
-            echo sprintf(
-                "[RECV FALSE] elapsed=%.3fs errCode=%s errMsg=%s connected=%s\n",
-                $elapsed,
-                $this->client->errCode,
-                $this->client->errMsg,
-                var_export($this->client->connected, true),
-            );
-        } elseif ($frame === '') {
-            echo sprintf(
-                "[RECV EMPTY] elapsed=%.3fs connected=%s\n",
-                $elapsed,
-                var_export($this->client->connected, true),
-            );
-        } elseif ($frame instanceof Frame) {
-            echo sprintf(
-                "[RECV FRAME] elapsed=%.3fs bytes=%d\n",
-                $elapsed,
-                strlen($frame->data),
-            );
-        }
+    private function receive(): string|false|null
+    {
+        $frame = $this->client->recv(30);
 
         if ($frame instanceof Frame) {
             return $frame->data;
         }
 
-        // Swoole 6.1+: رشته خالی یعنی سرور اتصال را بسته است.
+        // اتصال توسط سرور بسته شده است.
         if ($frame === '') {
             return null;
         }
 
+        // Timeout یا خطای دریافت
         if ($frame === false) {
+            $errorCode = $this->client->errCode;
+
+            if ($errorCode === SOCKET_ETIMEDOUT) {
+                return false;
+            }
+
             Log::warning('Nobitex WebSocket receive failed.', [
-                'error_code' => $this->client->errCode,
+                'error_code' => $errorCode,
                 'error_message' => $this->client->errMsg,
                 'connected' => $this->client->connected,
             ]);
@@ -230,13 +256,12 @@ class NobitexWebSocketClient
             JSON_THROW_ON_ERROR
         );
 
-        if (!$this->client->push($message)) {
+        if (! $this->client->push($message)) {
             throw new RuntimeException(
                 "WebSocket push failed: {$this->client->errCode} - {$this->client->errMsg}"
             );
         }
     }
-
 
     public function subscribe(string $channel): void
     {
@@ -293,13 +318,16 @@ class NobitexWebSocketClient
         ]);
     }
 
-
     public function listen(): void
     {
         while (true) {
             $raw = $this->receive();
-            if ($raw === null) {
 
+            if ($raw === false) {
+                continue;
+            }
+
+            if ($raw === null) {
                 Log::warning('Nobitex WebSocket connection lost', [
                     'error_code' => $this->client->errCode,
                     'error_message' => $this->client->errMsg,
@@ -307,6 +335,7 @@ class NobitexWebSocketClient
 
                 return;
             }
+
             $this->handleResponse($raw);
         }
     }
@@ -326,7 +355,7 @@ class NobitexWebSocketClient
 
             if (
                 json_last_error() !== JSON_ERROR_NONE ||
-                !is_array($response)
+                ! is_array($response)
             ) {
                 Log::warning('Invalid WebSocket JSON response', [
                     'message' => $line,
@@ -338,11 +367,12 @@ class NobitexWebSocketClient
             // Heartbeat
             if ($response === []) {
                 $this->handleHeartbeat();
+
                 continue;
             }
 
             $requestId = isset($response['id'])
-                ? (int)$response['id']
+                ? (int) $response['id']
                 : 0;
 
             // پاسخ درخواست Subscribe
@@ -351,18 +381,21 @@ class NobitexWebSocketClient
                 isset($this->pendingSubscriptions[$requestId])
             ) {
                 $this->handleSubscribeReply($requestId, $response);
+
                 continue;
             }
 
             // Publication عادی
             if (isset($response['push']['pub'])) {
                 $this->handlePublication($response);
+
                 continue;
             }
 
             // پاسخ اتصال
             if (isset($response['connect'])) {
                 Log::info('Nobitex WebSocket handshake response received');
+
                 continue;
             }
 
@@ -380,7 +413,6 @@ class NobitexWebSocketClient
             ]);
         }
     }
-
 
     private function handleSubscribeReply(int $requestId, array $response): void
     {
@@ -405,15 +437,23 @@ class NobitexWebSocketClient
             }
 
             throw new RuntimeException(
-                "Subscribe failed for {$channel}: " . json_encode($response['error'])
+                "Subscribe failed for {$channel}: ".json_encode($response['error'])
             );
         }
 
         $result = $response['subscribe'] ?? null;
 
-        if (!is_array($result)) {
+        if (! is_array($result)) {
             throw new RuntimeException(
                 "Invalid Subscribe response for {$channel}."
+            );
+        }
+
+        $publications = $result['publications'] ?? [];
+
+        if (! is_array($publications)) {
+            throw new RuntimeException(
+                "Invalid publications in Subscribe response for {$channel}."
             );
         }
 
@@ -422,9 +462,9 @@ class NobitexWebSocketClient
             Log::info('Nobitex snapshot subscription established', [
                 'channel' => $channel,
             ]);
-
-            foreach ($result['publications'] ?? [] as $publication) {
-                if (!is_array($publication)) {
+            // بخش اسنپ شات
+            foreach ($publications as $publication) {
+                if (! is_array($publication)) {
                     Log::warning('Invalid publication in subscribe response.', [
                         'channel' => $channel,
                     ]);
@@ -474,16 +514,16 @@ class NobitexWebSocketClient
             'positioned' => $result['positioned'] ?? false,
         ]);
 
-        if ($wasRecovering && !$recovered) {
+        if ($wasRecovering && ! $recovered) {
             Log::warning('Nobitex subscription recovery failed', [
                 'channel' => $channel,
             ]);
         }
 
         $publicationsProcessed = true;
-
-        foreach ($result['publications'] ?? [] as $publication) {
-            if (!is_array($publication)) {
+        // بخش دلتا
+        foreach ($publications as $publication) {
+            if (! is_array($publication)) {
                 $publicationsProcessed = false;
                 $this->subscriptionManager->invalidate($channel);
                 break;
@@ -496,7 +536,7 @@ class NobitexWebSocketClient
                 ],
             ]);
 
-            if (!$processed) {
+            if (! $processed) {
                 $publicationsProcessed = false;
                 break;
             }
@@ -514,7 +554,7 @@ class NobitexWebSocketClient
                 if ($this->marketDataManager->getHandler($symbol) !== null) {
                     $resumed = $this->marketDataManager->resumeMarket($symbol);
 
-                    if (!$resumed) {
+                    if (! $resumed) {
                         Log::warning('Order book could not resume after recovery.', [
                             'channel' => $channel,
                         ]);
@@ -524,21 +564,21 @@ class NobitexWebSocketClient
         }
     }
 
-
-
     private function handlePublication(array $message): bool
     {
         $push = $message['push'] ?? [];
         $channel = $push['channel'] ?? null;
         $publication = $push['pub'] ?? null;
 
-        if (!is_string($channel) || !is_array($publication)) {
+        if (! is_string($channel) || ! is_array($publication)) {
             Log::warning('Invalid Nobitex publication envelope.');
+
             return false;
         }
 
-        if (!preg_match('/^public:orderbook-([A-Z0-9]+)$/', $channel, $matches)) {
+        if (! preg_match('/^public:orderbook-([A-Z0-9]+)$/', $channel, $matches)) {
             Log::warning('Invalid orderbook channel.', ['channel' => $channel]);
+
             return false;
         }
 
@@ -568,7 +608,7 @@ class NobitexWebSocketClient
 
             $processed = $this->messageRouter->route($message);
 
-            if (!$processed) {
+            if (! $processed) {
                 $this->marketDataManager->invalidateMarket($symbol);
 
                 Log::warning('Snapshot processing failed.', [
@@ -578,7 +618,7 @@ class NobitexWebSocketClient
                 return false;
             }
 
-            if (!$handler->isValid()) {
+            if (! $handler->isValid()) {
                 Log::debug('Snapshot ignored or market is not ready yet.', [
                     'channel' => $channel,
                 ]);
@@ -591,8 +631,8 @@ class NobitexWebSocketClient
         $rawOffset = $publication['offset'] ?? null;
 
         if (
-            !is_int($rawOffset) &&
-            !(is_string($rawOffset) && ctype_digit($rawOffset))
+            ! is_int($rawOffset) &&
+            ! (is_string($rawOffset) && ctype_digit($rawOffset))
         ) {
             Log::warning('Invalid publication offset.', [
                 'channel' => $channel,
@@ -600,6 +640,7 @@ class NobitexWebSocketClient
             ]);
 
             $this->subscriptionManager->invalidate($channel);
+
             return false;
         }
 
@@ -642,8 +683,7 @@ class NobitexWebSocketClient
 
         $processed = $this->messageRouter->route($message);
 
-
-        if (!$processed) {
+        if (! $processed) {
             $this->subscriptionManager->invalidate($channel);
 
             if ($this->marketDataManager->getHandler($symbol) !== null) {
@@ -660,7 +700,7 @@ class NobitexWebSocketClient
 
         $updated = $this->subscriptionManager->updateOffset($channel, $offset);
 
-        if (!$updated) {
+        if (! $updated) {
             Log::warning('Failed to update subscription offset.', [
                 'channel' => $channel,
                 'offset' => $offset,
@@ -670,10 +710,9 @@ class NobitexWebSocketClient
         return $updated;
     }
 
-
     private function handleHeartbeat(): void
     {
-        if (!$this->client->push('{}')) {
+        if (! $this->client->push('{}')) {
             throw new RuntimeException(
                 "Pong failed: {$this->client->errCode} - {$this->client->errMsg}"
             );

@@ -14,7 +14,7 @@ class NobitexOrderBookCommandTest extends TestCase
     #[Test]
     public function snapshot_mode_does_not_fetch_or_initialize_rest_orderbooks(): void
     {
-        $manager = new MarketDataManager();
+        $manager = new MarketDataManager;
         $manager->registerMarkets(['BTCIRT', 'ETHIRT']);
 
         $httpClient = $this->createMock(NobitexHttpClient::class);
@@ -22,7 +22,7 @@ class NobitexOrderBookCommandTest extends TestCase
         $httpClient->expects($this->never())
             ->method('getOrderBook');
 
-        $command = new TestableNobitexOrderBook();
+        $command = new TestableNobitexOrderBook;
 
         $channels = $command->prepare(
             OrderBookMode::SNAPSHOT,
@@ -46,7 +46,7 @@ class NobitexOrderBookCommandTest extends TestCase
     #[Test]
     public function delta_mode_fetches_and_initializes_rest_orderbooks(): void
     {
-        $manager = new MarketDataManager();
+        $manager = new MarketDataManager;
         $manager->registerMarkets(['BTCIRT']);
 
         $httpClient = $this->createMock(NobitexHttpClient::class);
@@ -62,7 +62,7 @@ class NobitexOrderBookCommandTest extends TestCase
                 ],
             ]);
 
-        $command = new TestableNobitexOrderBook();
+        $command = new TestableNobitexOrderBook;
 
         $channels = $command->prepare(
             OrderBookMode::DELTA,

@@ -14,7 +14,7 @@ class MarketDataManager
         $symbol = $this->normalizeSymbol($symbol);
 
         return $this->handlers[$symbol]
-            ??= new OrderBookHandler();
+            ??= new OrderBookHandler;
     }
 
     public function registerMarkets(array $symbols): void
@@ -77,7 +77,7 @@ class MarketDataManager
     {
         $symbol = strtoupper(trim($symbol));
 
-        if ($symbol === '' || !preg_match('/^[A-Z0-9]+$/', $symbol)) {
+        if ($symbol === '' || ! preg_match('/^[A-Z0-9]+$/', $symbol)) {
             throw new InvalidArgumentException('Invalid market symbol.');
         }
 

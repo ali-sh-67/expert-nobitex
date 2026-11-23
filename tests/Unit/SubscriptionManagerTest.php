@@ -13,7 +13,7 @@ class SubscriptionManagerTest extends TestCase
     {
         parent::setUp();
 
-        $this->manager = new SubscriptionManager();
+        $this->manager = new SubscriptionManager;
     }
 
     public function test_it_registers_a_channel_subscription(): void
@@ -178,7 +178,6 @@ class SubscriptionManagerTest extends TestCase
 
         $this->assertCount(2, $this->manager->all());
     }
-
 
     public function test_it_preserves_previous_offset_during_successful_recovery(): void
     {
@@ -368,6 +367,4 @@ class SubscriptionManagerTest extends TestCase
             $this->manager->getRecoveryPosition($channel)
         );
     }
-
-
 }

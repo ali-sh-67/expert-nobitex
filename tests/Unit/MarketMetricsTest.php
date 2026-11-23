@@ -13,7 +13,7 @@ class MarketMetricsTest extends TestCase
     #[Test]
     public function it_preserves_small_non_zero_spread_percentage(): void
     {
-        $handler = new OrderBookHandler();
+        $handler = new OrderBookHandler;
 
         $handler->initialize([
             'bids' => [['175093740620', '0.002933']],

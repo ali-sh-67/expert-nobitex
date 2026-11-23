@@ -21,7 +21,7 @@ class MarketPair extends Model
         'is_active' => 'boolean',
         'min_amount' => 'decimal:8',
         'tick_size' => 'decimal:8',
-        'last_price'=>'decimal:8',
+        'last_price' => 'decimal:8',
     ];
 
     public function orders(): HasMany

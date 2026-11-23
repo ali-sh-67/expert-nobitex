@@ -25,7 +25,7 @@ class NobitexServiceProvider extends ServiceProvider
 
         $this->app->singleton(
             StrategyRegistry::class,
-            fn($app) => new StrategyRegistry(
+            fn ($app) => new StrategyRegistry(
                 $app->tagged('nobitex.strategies')
             )
         );
@@ -33,7 +33,7 @@ class NobitexServiceProvider extends ServiceProvider
         $this->app->singleton(
             MarketDataManager::class,
             function ($app) {
-                $manager = new MarketDataManager();
+                $manager = new MarketDataManager;
 
                 $manager->registerMarkets(
                     config('nobitex.markets.symbols', [])

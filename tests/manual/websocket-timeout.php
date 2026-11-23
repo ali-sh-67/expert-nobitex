@@ -1,6 +1,5 @@
 <?php
 
-use Swoole\Coroutine;
 use Swoole\Coroutine\Http\Client;
 use Swoole\WebSocket\Frame;
 
@@ -16,27 +15,30 @@ use Swoole\WebSocket\Frame;
     try {
         echo "Connecting...\n";
 
-        if (!$client->upgrade('/connection/websocket')) {
+        if (! $client->upgrade('/connection/websocket')) {
             echo "Upgrade failed: {$client->errCode} - {$client->errMsg}\n";
+
             return;
         }
 
         echo "Connected. Sending Centrifuge connect request...\n";
 
-        if (!$client->push(json_encode([
+        if (! $client->push(json_encode([
             'connect' => (object) [],
             'id' => 1,
         ], JSON_THROW_ON_ERROR))) {
             echo "Push failed: {$client->errCode} - {$client->errMsg}\n";
+
             return;
         }
 
         $response = $client->recv(10);
 
-        if (!$response instanceof Frame) {
-            echo "Connect response failed: ";
+        if (! $response instanceof Frame) {
+            echo 'Connect response failed: ';
             var_dump($response);
             echo "errCode={$client->errCode}; errMsg={$client->errMsg}\n";
+
             return;
         }
 
@@ -48,11 +50,15 @@ use Swoole\WebSocket\Frame;
         $elapsed = round(microtime(true) - $startedAt, 3);
 
         echo "Elapsed: {$elapsed}s\n";
-        echo 'Result type: ' . get_debug_type($result) . "\n";
+        echo 'Result type: '.get_debug_type($result)."\n";
         echo "errCode={$client->errCode}; errMsg={$client->errMsg}\n";
 
         if ($result === false) {
-            echo "Result: false (timeout or receive error)\n";
+            if ($client->errCode === SOCKET_ETIMEDOUT) {
+                echo "Result: timeout\n";
+            } else {
+                echo "Result: receive error\n";
+            }
         } elseif ($result === '') {
             echo "Result: server closed the connection\n";
         } elseif ($result instanceof Frame) {

@@ -3,9 +3,9 @@
 namespace Tests\Unit;
 
 use App\Services\Nobitex\OrderBookHandler;
+use LogicException;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
-use LogicException;
 use UnexpectedValueException;
 
 class OrderBookHandlerModeTest extends TestCase
@@ -17,7 +17,7 @@ class OrderBookHandlerModeTest extends TestCase
             'nobitex.orderbook_mode' => 'snapshot',
         ]);
 
-        $handler = new OrderBookHandler();
+        $handler = new OrderBookHandler;
 
         $result = $handler->handle([
             'bids' => [
@@ -42,7 +42,7 @@ class OrderBookHandlerModeTest extends TestCase
             'nobitex.orderbook_mode' => 'delta',
         ]);
 
-        $handler = new OrderBookHandler();
+        $handler = new OrderBookHandler;
 
         $this->expectException(LogicException::class);
         $this->expectExceptionMessage('Delta mode is not implemented yet.');
@@ -57,7 +57,7 @@ class OrderBookHandlerModeTest extends TestCase
             'nobitex.orderbook_mode' => 'invalid',
         ]);
 
-        $handler = new OrderBookHandler();
+        $handler = new OrderBookHandler;
 
         $this->expectException(UnexpectedValueException::class);
         $this->expectExceptionMessage('Invalid orderbook mode configuration.');
