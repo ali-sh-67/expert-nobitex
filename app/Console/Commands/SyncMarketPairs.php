@@ -9,6 +9,8 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
+use function Illuminate\Support\microseconds;
+use function Illuminate\Support\seconds;
 
 #[Signature('nobitex:smp')]
 #[Description('sync market pairs')]
@@ -19,6 +21,7 @@ class SyncMarketPairs extends Command
      */
     public function handle()
     {
+        $startTime = microtime(true);
         $response = Http::timeout(20)
             ->retry(3, 500)
             ->get('https://apiv2.nobitex.ir/market/stats');
@@ -66,5 +69,6 @@ class SyncMarketPairs extends Command
         $this->info('Total pairs: ' . count($dataPairs));
         $this->info('Total upsert: ' . $upsertCount);
         $this->info('Total deactivate Pairs ' . $deactivePairs);
+        $this->info('Execution time: ' . (number_format((microtime(true) - $startTime), 2)). ' seconds');
     }
 }
