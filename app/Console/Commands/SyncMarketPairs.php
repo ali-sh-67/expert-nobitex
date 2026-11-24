@@ -18,15 +18,20 @@ class SyncMarketPairs extends Command
     {
         $response = Http::get('https://apiv2.nobitex.ir/market/stats');
 
-        $response = json_decode($response->body());
+        $response = $response->json();
 
-        $status = ($response->status);
+        if(!$response['status']=='ok'){
+          throw new Exception('connection is failed')
+        };
 
-        $stats = (array)$response->stats;
+        $stats = $response['stats'];
 
         $pairs = array_keys($stats);
 
-        var_dump(array_first($stats));
+        var_dump(array_first($stats)) ;
+
         var_dump(count($pairs));
+
+        var_dump($status);
     }
 }
