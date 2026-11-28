@@ -3,14 +3,12 @@
 namespace App\Console\Commands;
 
 use App\Models\Pairs;
-use Exception;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
-use function Illuminate\Support\microseconds;
-use function Illuminate\Support\seconds;
 
 #[Signature('nobitex:smp')]
 #[Description('sync market pairs')]
@@ -19,7 +17,7 @@ class SyncMarketPairs extends Command
     /**
      * Execute the console command.
      */
-    public function handle()
+    public function handle():int
     {
         $startTime = microtime(true);
         $response = Http::timeout(20)
@@ -34,7 +32,7 @@ class SyncMarketPairs extends Command
             throw new RuntimeException('Invalid Nobitex API response.');
         }
 
-        $stats = $response['stats'] ?? null;
+        $stats = $data['stats'] ?? null;
 
         if (empty($stats) || !is_array($stats)) {
             throw new \RuntimeException('Market pairs list is empty or invalid.');
@@ -53,22 +51,27 @@ class SyncMarketPairs extends Command
                 'updated_at' => $now,
             ];
         }
-
+        [$deactivePairs, $upsertCount] = DB::transaction(function () use ($symbols, $dataPairs, $now) {
         $deactivePairs = Pairs::query()
             ->whereNotIn('symbol', $symbols)
+            ->where('is_active', true)
             ->update(['is_active' => false, 'updated_at' => $now]);
 
         $upsertCount = Pairs::query()
             ->upsert(
                 $dataPairs,
                 ['symbol'],
-                ['is_closed', 'updated_at'],
+                ['is_active', 'is_closed', 'updated_at'],
             );
+            return [$deactivePairs, $upsertCount];
+        });
 
         $this->info('Market pairs synchronized successfully.');
         $this->info('Total pairs: ' . count($dataPairs));
         $this->info('Total upsert: ' . $upsertCount);
         $this->info('Total deactivate Pairs ' . $deactivePairs);
         $this->info('Execution time: ' . (number_format((microtime(true) - $startTime), 2)). ' seconds');
+
+        return self::SUCCESS;
     }
 }
